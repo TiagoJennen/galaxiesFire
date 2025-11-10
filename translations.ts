@@ -25,6 +25,19 @@ export const translations = {
     showPhoto: "Toon foto",
     hidePhoto: "Verberg foto",
     pickFromGallery: "Kies uit galerij",
+    useCurrentLocation: "Gebruik huidige locatie",
+    updateLocation: "Locatie bijwerken",
+    locationLabel: "Locatie",
+    locationRequired: "Stel eerst een locatie in voor deze taak.",
+    locationPermissionDeniedTitle: "Locatie geweigerd",
+    locationPermissionDeniedMessage:
+      "Schakel locatietoegang in via instellingen om meldingen te ontvangen wanneer je in de buurt komt van taken.",
+    locationPermissionBackgroundDeniedMessage:
+      "Sta altijd-locatie toe zodat we kunnen controleren of je binnen 100 meter van een taak bent.",
+    noLocationSelected: "Geen locatie geselecteerd",
+    nearbyTaskTitle: "Taak in de buurt",
+    nearbyTaskBody: (task: string) =>
+      `Je bent binnen 100 meter van \"${task}\".`,
   },
   en: {
     welcome: "Welcome",
@@ -52,5 +65,18 @@ export const translations = {
     showPhoto: "Show photo",
     hidePhoto: "Hide photo",
     pickFromGallery: "Pick from gallery",
+    useCurrentLocation: "Use current location",
+    updateLocation: "Update location",
+    locationLabel: "Location",
+    locationRequired: "Please set a location for this task first.",
+    locationPermissionDeniedTitle: "Location denied",
+    locationPermissionDeniedMessage:
+      "Enable location access in settings so we can alert you when you are near a task.",
+    locationPermissionBackgroundDeniedMessage:
+      "Allow always-on location so we can detect when you are within 100 meters of a task.",
+    noLocationSelected: "No location selected",
+    nearbyTaskTitle: "Task nearby",
+    nearbyTaskBody: (task: string) =>
+      `You are within 100 meters of \"${task}\".`,
   },
 };

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -7,23 +7,34 @@ import {
   TouchableOpacity,
   Alert,
   Image,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { FIREBASE_AUTH } from "../../FirebaseConfig";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 import { translations } from "../../translations";
 import * as ImagePicker from "expo-image-picker";
+import * as Notifications from "expo-notifications";
+import { useNavigation, CommonActions } from "@react-navigation/native";
+
+/*
+  Interfaces voor taken en subtaken.
+  - SubTodo: tekst, status (done), optioneel deadline en afbeelding.
+  - Todo: zelfde als SubTodo maar bevat een lijst met subtasks.
+*/
 
 interface SubTodo {
   text: string;
   done: boolean;
   deadline?: string | null;
   image?: string | null;
+  createdAt?: string | null;
+  priority?: "low" | "medium" | "high";
 }
 
 interface Todo {
@@ -32,7 +43,17 @@ interface Todo {
   deadline?: string | null;
   subtasks: SubTodo[];
   image?: string | null;
+  createdAt?: string | null;
+  priority?: "low" | "medium" | "high";
 }
+
+/*
+  Props die de List component verwacht:
+  - theme: light | dark
+  - toggleTheme: functie om thema te wisselen
+  - language: 'nl' | 'en'
+  - toggleLanguage: functie om taal te wisselen
+*/
 
 interface Props {
   theme: "light" | "dark";
@@ -43,12 +64,15 @@ interface Props {
 
 const FIRESTORE_DB = getFirestore();
 
+// Hoofdfunctie van het scherm: toont takenlijst, formulieren en archive
 const List: React.FC<Props> = ({
   theme,
   toggleTheme,
   language,
   toggleLanguage,
 }) => {
+  // Lokale state hooks voor UI en data
+  // UseState om data op te slaan en te veranderen
   const [task, setTask] = useState("");
   const [todos, setTodos] = useState<Todo[]>([]);
   const [archivedTodos, setArchivedTodos] = useState<Todo[]>([]);
@@ -64,7 +88,74 @@ const List: React.FC<Props> = ({
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [subtaskTime, setSubtaskTime] = useState<Date | null>(null);
   const [showSubtaskTimePicker, setShowSubtaskTimePicker] = useState(false);
+  const navigation = useNavigation<any>();
+  const [authReady, setAuthReady] = useState(false);
+  const [newSubtaskPriority, setNewSubtaskPriority] = useState<
+    "low" | "medium" | "high"
+  >("medium");
+  // Sorteervolgorde: 'oldest' = eerst toegevoegd bovenaan, 'newest' = laatst toegevoegd bovenaan
+  const [sortOrder, setSortOrder] = useState<"oldest" | "newest">("oldest");
+  const toggleSortOrder = () =>
+    setSortOrder((s) => (s === "oldest" ? "newest" : "oldest"));
 
+  // Prioriteits-sorteerrichting: highToLow of lowToHigh
+  const [prioritySort, setPrioritySort] = useState<"highToLow" | "lowToHigh">(
+    "highToLow"
+  );
+  const togglePrioritySort = () =>
+    setPrioritySort((p) => (p === "highToLow" ? "lowToHigh" : "highToLow"));
+
+  // Prioriteit voor nieuwe taak (default medium)
+  const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">(
+    "medium"
+  );
+  const priorityRank = (p?: string) =>
+    p === "high" ? 2 : p === "medium" ? 1 : 0;
+  const priorityColor = (p?: "low" | "medium" | "high") => {
+    if (p === "high") return "#ff6b6b";
+    if (p === "medium") return "#ffb366";
+    if (p === "low") return "#6bc66b";
+    return "#6c757d";
+  };
+
+  // Bouw gesorteerde display-list: eerst priority (high->low) daarna createdAt (afhankelijk van sortOrder).
+  const buildDisplayList = (list: Todo[]) => {
+    return list
+      .map((item, originalIndex) => ({ item, originalIndex }))
+      .sort((a, b) => {
+        // sort by priority respecting prioritySort direction
+        const aPr = priorityRank(a.item.priority);
+        const bPr = priorityRank(b.item.priority);
+        const pr = prioritySort === "highToLow" ? bPr - aPr : aPr - bPr;
+        if (pr !== 0) return pr;
+        // tie-breaker: createdAt depending on sortOrder
+        const aTime = a.item.createdAt
+          ? new Date(a.item.createdAt).getTime()
+          : 0;
+        const bTime = b.item.createdAt
+          ? new Date(b.item.createdAt).getTime()
+          : 0;
+        if (sortOrder === "newest") return bTime - aTime;
+        return aTime - bTime;
+      });
+  };
+
+  const buildSubtaskDisplay = (list: SubTodo[]) => {
+    return list
+      .map((sub, originalIndex) => ({ sub, originalIndex }))
+      .sort((a, b) => {
+        const prA = priorityRank(a.sub.priority);
+        const prB = priorityRank(b.sub.priority);
+        const priorityDiff =
+          prioritySort === "highToLow" ? prB - prA : prA - prB;
+        if (priorityDiff !== 0) return priorityDiff;
+        const timeA = a.sub.createdAt ? new Date(a.sub.createdAt).getTime() : 0;
+        const timeB = b.sub.createdAt ? new Date(b.sub.createdAt).getTime() : 0;
+        return sortOrder === "newest" ? timeB - timeA : timeA - timeB;
+      });
+  };
+
+  // Kleuren afhankelijk van thema
   const colors = {
     background: theme === "light" ? "#3A86FFFF" : "#222",
     formBackground: theme === "light" ? "#fff" : "#333",
@@ -78,6 +169,7 @@ const List: React.FC<Props> = ({
     toggleButton: "#6c757d",
   };
 
+  // formatDate: zet ISO/string datum om naar leesbare tekst gebaseerd op taal
   const formatDate = (dateString?: string | null) => {
     if (!dateString) return "";
     const date = new Date(dateString);
@@ -91,6 +183,7 @@ const List: React.FC<Props> = ({
     });
   };
 
+  // Sla taken op in Firestore (en normaliseer optionele velden naar null)
   const saveTodosFirebase = async (
     userId: string,
     todosData: Todo[],
@@ -100,21 +193,29 @@ const List: React.FC<Props> = ({
       const cleanTodos = todosData.map((todo) => ({
         ...todo,
         deadline: todo.deadline || null,
+        createdAt: todo.createdAt || null,
+        priority: todo.priority || null,
         image: todo.image || null,
         subtasks: todo.subtasks.map((sub) => ({
           ...sub,
           deadline: sub.deadline || null,
+          createdAt: sub.createdAt || null,
           image: sub.image || null,
+          priority: sub.priority || null,
         })),
       }));
       const cleanArchived = archivedData.map((todo) => ({
         ...todo,
         deadline: todo.deadline || null,
+        createdAt: todo.createdAt || null,
+        priority: todo.priority || null,
         image: todo.image || null,
         subtasks: todo.subtasks.map((sub) => ({
           ...sub,
           deadline: sub.deadline || null,
+          createdAt: sub.createdAt || null,
           image: sub.image || null,
+          priority: sub.priority || null,
         })),
       }));
       const userRef = doc(FIRESTORE_DB, "users", userId);
@@ -124,6 +225,7 @@ const List: React.FC<Props> = ({
     }
   };
 
+  // Laad taken uit Firestore; retourneer lege arrays bij fouten of geen document
   const loadTodosFirebase = async (userId: string) => {
     try {
       const userRef = doc(FIRESTORE_DB, "users", userId);
@@ -139,9 +241,12 @@ const List: React.FC<Props> = ({
     }
   };
 
+  // Lifecycle: abonneer op auth state en laad data (lokale storage + firebase)
+  // UseEffect om iets te doen als er iets verandert
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, async (user) => {
       if (user) {
+        // Ingelogde gebruiker: laad user-specific storage + firestore
         setUserId(user.uid);
         const savedTodos = await AsyncStorage.getItem(`todos_${user.uid}`);
         if (savedTodos) setTodos(JSON.parse(savedTodos));
@@ -155,35 +260,89 @@ const List: React.FC<Props> = ({
         setTodos([]);
         setArchivedTodos([]);
       }
+      setAuthReady(true);
     });
     return unsubscribe;
   }, []);
 
+  // Algemene save functie: update state + persist (locaal en firebase)
   const saveAll = (newTodos: Todo[], newArchived: Todo[]) => {
-    if (!userId) return;
     setTodos(newTodos);
     setArchivedTodos(newArchived);
-    AsyncStorage.setItem(`todos_${userId}`, JSON.stringify(newTodos)).catch(
-      (e) => console.log("Fout bij opslaan todos lokaal:", e)
-    );
-    AsyncStorage.setItem(
-      `archive_${userId}`,
-      JSON.stringify(newArchived)
-    ).catch((e) => console.log("Fout bij opslaan archief lokaal:", e));
-    saveTodosFirebase(userId, newTodos, newArchived);
+
+    if (userId) {
+      // Sla lokaal op per gebruiker en push naar firestore
+      AsyncStorage.setItem(`todos_${userId}`, JSON.stringify(newTodos)).catch(
+        (e) => console.log("Fout bij opslaan todos lokaal:", e)
+      );
+      AsyncStorage.setItem(
+        `archive_${userId}`,
+        JSON.stringify(newArchived)
+      ).catch((e) => console.log("Fout bij opslaan archief lokaal:", e));
+      saveTodosFirebase(userId, newTodos, newArchived);
+    } else {
+      // Sla lokaal op voor anonieme gebruiker
+      AsyncStorage.setItem("todos_local", JSON.stringify(newTodos)).catch((e) =>
+        console.log("Fout bij opslaan todos lokaal (local):", e)
+      );
+      AsyncStorage.setItem("archive_local", JSON.stringify(newArchived)).catch(
+        (e) => console.log("Fout bij opslaan archief lokaal (local):", e)
+      );
+    }
   };
 
-  const addTodo = () => {
-    if (!task.trim()) return;
-
-    let finalDate: string | null = null;
-    if (selectedDate) {
-      const date = new Date(selectedDate);
-      if (selectedTime) {
-        date.setHours(selectedTime.getHours(), selectedTime.getMinutes());
-      }
-      finalDate = date.toISOString();
+  // Toon bevestigingsdialoog voordat iets verwijderd wordt
+  const confirmDelete = (
+    title: string,
+    message: string,
+    onConfirm: () => void
+  ) => {
+    if (Platform.OS === "web") {
+      if (window.confirm(message)) onConfirm();
+      return;
     }
+    Alert.alert(title, message, [
+      { text: translations[language].cancel, style: "cancel" },
+      {
+        text: translations[language].delete,
+        style: "destructive",
+        onPress: onConfirm,
+      },
+    ]);
+  };
+
+  const showInputWarning = (message: string) => {
+    const title = language === "nl" ? "Let op" : "Warning";
+    if (Platform.OS === "web") {
+      window.alert(`${title}: ${message}`);
+    } else {
+      const okLabel = "OK";
+      Alert.alert(title, message, [{ text: okLabel }]);
+    }
+  };
+
+  // Combineer datum + tijd naar ISO string (gebruik 00:00 als geen tijd)
+  const combineDateAndTime = (date: Date | null, time: Date | null) => {
+    if (!date && !time) return null;
+    const d = date ? new Date(date) : new Date();
+    if (time) {
+      d.setHours(time.getHours(), time.getMinutes(), 0, 0);
+    } else {
+      d.setHours(0, 0, 0, 0);
+    }
+    return d.toISOString();
+  };
+
+  // Voeg een nieuwe taak toe met optionele deadline/tijd
+  const addTodo = () => {
+    if (!task.trim()) {
+      showInputWarning(
+        language === "nl" ? "Vul een taak in." : "Please enter a task."
+      );
+      return;
+    }
+
+    const finalDate = combineDateAndTime(selectedDate, selectedTime);
 
     const newTodo: Todo = {
       text: task,
@@ -191,6 +350,8 @@ const List: React.FC<Props> = ({
       deadline: finalDate,
       subtasks: [],
       image: null,
+      createdAt: new Date().toISOString(),
+      priority: newPriority,
     };
 
     saveAll([...todos, newTodo], archivedTodos);
@@ -199,12 +360,14 @@ const List: React.FC<Props> = ({
     setSelectedTime(null);
   };
 
+  // Wissel done status voor taak
   const toggleTodo = (index: number) => {
     const updated = [...todos];
     updated[index].done = !updated[index].done;
     saveAll(updated, archivedTodos);
   };
 
+  // Wissel done status voor subtask
   const toggleSubtask = (todoIndex: number, subIndex: number) => {
     const updated = [...todos];
     updated[todoIndex].subtasks[subIndex].done =
@@ -212,25 +375,20 @@ const List: React.FC<Props> = ({
     saveAll(updated, archivedTodos);
   };
 
+  // Verwijder taak (met confirm)
   const removeTodo = (index: number) => {
-    Alert.alert(
+    confirmDelete(
       translations[language].confirmDelete,
       translations[language].deleteTask,
-      [
-        { text: translations[language].cancel, style: "cancel" },
-        {
-          text: translations[language].delete,
-          style: "destructive",
-          onPress: () =>
-            saveAll(
-              todos.filter((_, i) => i !== index),
-              archivedTodos
-            ),
-        },
-      ]
+      () =>
+        saveAll(
+          todos.filter((_, i) => i !== index),
+          archivedTodos
+        )
     );
   };
 
+  // Archiveer taak: verplaats van todos naar archivedTodos
   const archiveTodo = (index: number) => {
     const todoToArchive = todos[index];
     saveAll(
@@ -239,21 +397,35 @@ const List: React.FC<Props> = ({
     );
   };
 
+  // Voeg subtask toe aan bestaande taak (met optionele deadline/tijd)
   const addSubtask = (todoIndex: number) => {
-    if (!subtaskText.trim()) return;
+    if (!subtaskText.trim()) {
+      showInputWarning(
+        language === "nl" ? "Vul een subtaak in." : "Please enter a subtask."
+      );
+      return;
+    }
+
+    const finalDate = combineDateAndTime(subtaskDate, subtaskTime);
+
     const updatedTodos = [...todos];
     updatedTodos[todoIndex].subtasks.push({
       text: subtaskText,
       done: false,
-      deadline: subtaskDate?.toISOString() || null,
+      deadline: finalDate,
       image: null,
+      createdAt: new Date().toISOString(),
+      priority: newSubtaskPriority,
     });
     saveAll(updatedTodos, archivedTodos);
     setSubtaskText("");
     setSubtaskDate(null);
+    setSubtaskTime(null);
+    setNewSubtaskPriority("medium");
     setEditingTodoIndex(null);
   };
 
+  // Afbeelding toevoegen (camera of galerij). Ondersteunt web en native.
   const pickImage = async (
     forSubtask = false,
     todoIndex?: number,
@@ -261,73 +433,466 @@ const List: React.FC<Props> = ({
     isArchive = false,
     fromGallery = false
   ) => {
-    const permissionResult = fromGallery
-      ? await ImagePicker.requestMediaLibraryPermissionsAsync()
-      : await ImagePicker.requestCameraPermissionsAsync();
-
-    if (!permissionResult.granted) {
-      alert(
-        fromGallery
-          ? "Toegang tot je galerij is nodig!"
-          : "Camera toegang is nodig!"
-      );
-      return;
-    }
-
-    const result = fromGallery
-      ? await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.7,
-        })
-      : await ImagePicker.launchCameraAsync({
+    try {
+      if (Platform.OS === "web") {
+        // Web: vraag galerij-permissie en gebruik launchImageLibraryAsync
+        const permissionResult =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permissionResult.granted) {
+          alert("Toegang tot je galerij is nodig!");
+          return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           quality: 0.7,
         });
-
-    if (!result.canceled) {
-      const uri = result.assets[0].uri;
-
-      if (isArchive) {
-        const updatedArchived = [...archivedTodos];
-        if (forSubtask && todoIndex !== undefined && subIndex !== undefined) {
-          updatedArchived[todoIndex].subtasks[subIndex].image = uri;
-        } else if (!forSubtask && todoIndex !== undefined) {
-          updatedArchived[todoIndex].image = uri;
+        if (!result.canceled) {
+          const uri = result.assets[0].uri;
+          if (isArchive) {
+            const updatedArchived = [...archivedTodos];
+            if (
+              forSubtask &&
+              todoIndex !== undefined &&
+              subIndex !== undefined
+            ) {
+              updatedArchived[todoIndex].subtasks[subIndex].image = uri;
+            } else if (!forSubtask && todoIndex !== undefined) {
+              updatedArchived[todoIndex].image = uri;
+            }
+            saveAll(todos, updatedArchived);
+          } else {
+            const updatedTodos = [...todos];
+            if (
+              forSubtask &&
+              todoIndex !== undefined &&
+              subIndex !== undefined
+            ) {
+              updatedTodos[todoIndex].subtasks[subIndex].image = uri;
+            } else if (!forSubtask && todoIndex !== undefined) {
+              updatedTodos[todoIndex].image = uri;
+            }
+            saveAll(updatedTodos, archivedTodos);
+          }
         }
-        saveAll(todos, updatedArchived);
-      } else {
-        const updatedTodos = [...todos];
-        if (forSubtask && todoIndex !== undefined && subIndex !== undefined) {
-          updatedTodos[todoIndex].subtasks[subIndex].image = uri;
-        } else if (!forSubtask && todoIndex !== undefined) {
-          updatedTodos[todoIndex].image = uri;
-        }
-        saveAll(updatedTodos, archivedTodos);
+        return;
       }
+
+      // Native: vraag camera of galerij permissie afhankelijk van fromGallery
+      const permissionResult = fromGallery
+        ? await ImagePicker.requestMediaLibraryPermissionsAsync()
+        : await ImagePicker.requestCameraPermissionsAsync();
+
+      if (!permissionResult.granted) {
+        alert(
+          fromGallery
+            ? "Toegang tot je galerij is nodig!"
+            : "Camera toegang is nodig!"
+        );
+        return;
+      }
+
+      const result = fromGallery
+        ? await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            quality: 0.7,
+          })
+        : await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            quality: 0.7,
+          });
+
+      if (!result.canceled) {
+        const uri = result.assets[0].uri;
+
+        if (isArchive) {
+          const updatedArchived = [...archivedTodos];
+          if (forSubtask && todoIndex !== undefined && subIndex !== undefined) {
+            updatedArchived[todoIndex].subtasks[subIndex].image = uri;
+          } else if (!forSubtask && todoIndex !== undefined) {
+            updatedArchived[todoIndex].image = uri;
+          }
+          saveAll(todos, updatedArchived);
+        } else {
+          const updatedTodos = [...todos];
+          if (forSubtask && todoIndex !== undefined && subIndex !== undefined) {
+            updatedTodos[todoIndex].subtasks[subIndex].image = uri;
+          } else if (!forSubtask && todoIndex !== undefined) {
+            updatedTodos[todoIndex].image = uri;
+          }
+          saveAll(updatedTodos, archivedTodos);
+        }
+      }
+    } catch (e) {
+      console.log("Image pick error:", e);
     }
   };
 
+  // Logout: bewaar eerst naar firebase, daarna sign out
   const logout = async () => {
     if (!userId) return;
-    saveTodosFirebase(userId, todos, archivedTodos);
-    FIREBASE_AUTH.signOut();
+    await saveTodosFirebase(userId, todos, archivedTodos);
+    await signOut(FIREBASE_AUTH);
   };
 
-  const toggleArchivedTodo = (index: number) => {
-    const updatedArchived = [...archivedTodos];
-    updatedArchived[index].done = !updatedArchived[index].done;
-    saveAll(todos, updatedArchived);
+  // Parsers voor web prompt inputs (ondersteunt meerdere formaten)
+  const parseDateInput = (input: string | null) => {
+    if (!input) return null;
+    const isoMatch = input.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      return new Date(`${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}T00:00:00`);
+    }
+    const dmyMatch = input.match(/^(\d{2})[-\/](\d{2})[-\/](\d{4})$/);
+    if (dmyMatch) {
+      return new Date(`${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}T00:00:00`);
+    }
+    const parsed = new Date(input || "");
+    return isNaN(parsed.getTime()) ? null : parsed;
   };
 
-  const toggleArchivedSubtask = (todoIndex: number, subIndex: number) => {
-    const updatedArchived = [...archivedTodos];
-    updatedArchived[todoIndex].subtasks[subIndex].done =
-      !updatedArchived[todoIndex].subtasks[subIndex].done;
-    saveAll(todos, updatedArchived);
+  const parseTimeInput = (input: string | null) => {
+    if (!input) return null;
+    const tMatch = input.match(/^(\d{1,2}):(\d{2})$/);
+    if (!tMatch) return null;
+    const d = new Date();
+    d.setHours(parseInt(tMatch[1], 10), parseInt(tMatch[2], 10), 0, 0);
+    return d;
   };
 
+  // Open date/time pickers: web gebruikt prompts, native DateTimePicker
+  const openTaskDate = () => {
+    if (Platform.OS === "web") {
+      const input = window.prompt(
+        "Voer datum in (YYYY-MM-DD of DD-MM-YYYY):",
+        selectedDate ? selectedDate.toISOString().slice(0, 10) : ""
+      );
+      const parsed = parseDateInput(input);
+      if (parsed) setSelectedDate(parsed);
+      return;
+    }
+    setShowDatePicker(true);
+  };
+
+  const openTaskTime = () => {
+    if (Platform.OS === "web") {
+      const input = window.prompt(
+        "Voer tijd in (HH:MM, 24u):",
+        selectedTime
+          ? `${String(selectedTime.getHours()).padStart(2, "0")}:${String(
+              selectedTime.getMinutes()
+            ).padStart(2, "0")}`
+          : ""
+      );
+      const parsed = parseTimeInput(input);
+      if (parsed) setSelectedTime(parsed);
+      return;
+    }
+    setShowTimePicker(true);
+  };
+
+  const openSubtaskDate = () => {
+    if (Platform.OS === "web") {
+      const input = window.prompt(
+        "Voer datum subtask in (YYYY-MM-DD of DD-MM-YYYY):",
+        subtaskDate ? subtaskDate.toISOString().slice(0, 10) : ""
+      );
+      const parsed = parseDateInput(input);
+      if (parsed) setSubtaskDate(parsed);
+      return;
+    }
+    setShowSubtaskDatePicker(true);
+  };
+
+  const openSubtaskTime = () => {
+    if (Platform.OS === "web") {
+      const input = window.prompt(
+        "Voer tijd subtask in (HH:MM, 24u):",
+        subtaskTime
+          ? `${String(subtaskTime.getHours()).padStart(2, "0")}:${String(
+              subtaskTime.getMinutes()
+            ).padStart(2, "0")}`
+          : ""
+      );
+      const parsed = parseTimeInput(input);
+      if (parsed) setSubtaskTime(parsed);
+      return;
+    }
+    setShowSubtaskTimePicker(true);
+  };
+
+  // Notification handler setup (Expo Notifications)
+  if (Platform.OS !== "web") {
+    // Registreer hoe lokale meldingen getoond worden op native platforms.
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true, // vervangt shouldShowAlert
+        shouldShowList: true, // toont ook in notificatiecentrum
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+  }
+
+  // Flag die bijhoudt of de gebruiker meldingsrechten heeft gegeven.
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  // Set met unieke ids zodat we per deadline maar één melding sturen.
+  const notifiedDeadlinesRef = useRef<Set<string>>(new Set());
+
+  // Vraag bij het opstarten meteen om meldingsrechten (alleen native).
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    // Vraag meldingsrechten éénmalig op nadat het scherm geladen is.
+    const requestPermissions = async () => {
+      try {
+        let status = (await Notifications.getPermissionsAsync()).status;
+        if (status !== "granted") {
+          status = (await Notifications.requestPermissionsAsync()).status;
+        }
+        if (status !== "granted") {
+          Alert.alert(
+            language === "nl"
+              ? "Notificaties geweigerd"
+              : "Notifications denied",
+            language === "nl"
+              ? "Schakel notificaties in via de instellingen om deadline-meldingen te ontvangen."
+              : "Enable notifications in settings to receive deadline alerts."
+          );
+          setNotificationsEnabled(false);
+          return;
+        }
+        setNotificationsEnabled(true);
+      } catch (err) {
+        console.log("Notification permission error:", err);
+        setNotificationsEnabled(false);
+      }
+    };
+    requestPermissions();
+  }, []);
+
+  // Houd deadlines in de gaten en plan meldingen zodra ze bijna verlopen.
+  useEffect(() => {
+    if (Platform.OS === "web" || !notificationsEnabled) return;
+    // Controleer elke minuut of deadlines binnen de meldingsmomenten vallen.
+    const notificationStages = [
+      {
+        key: "3h",
+        ms: 3 * 60 * 60 * 1000,
+        taskTitle:
+          language === "nl" ? "Deadline binnen 3 uur" : "Deadline in 3 hours",
+        taskBody: (taskText: string) =>
+          language === "nl"
+            ? `Je taak "${taskText}" verloopt over 3 uur.`
+            : `Your task "${taskText}" expires in 3 hours.`,
+        subTitle:
+          language === "nl" ? "Subtaak binnen 3 uur" : "Subtask in 3 hours",
+        subBody: (todoText: string, subText: string) =>
+          language === "nl"
+            ? `De subtaak "${subText}" van "${todoText}" verloopt over 3 uur.`
+            : `The subtask "${subText}" for "${todoText}" expires in 3 hours.`,
+      },
+      {
+        key: "2h",
+        ms: 2 * 60 * 60 * 1000,
+        taskTitle:
+          language === "nl" ? "Deadline binnen 2 uur" : "Deadline in 2 hours",
+        taskBody: (taskText: string) =>
+          language === "nl"
+            ? `Je taak "${taskText}" verloopt over 2 uur.`
+            : `Your task "${taskText}" expires in 2 hours.`,
+        subTitle:
+          language === "nl" ? "Subtaak binnen 2 uur" : "Subtask in 2 hours",
+        subBody: (todoText: string, subText: string) =>
+          language === "nl"
+            ? `De subtaak "${subText}" van "${todoText}" verloopt over 2 uur.`
+            : `The subtask "${subText}" for "${todoText}" expires in 2 hours.`,
+      },
+      {
+        key: "1h",
+        ms: 1 * 60 * 60 * 1000,
+        taskTitle:
+          language === "nl" ? "Deadline binnen 1 uur" : "Deadline in 1 hour",
+        taskBody: (taskText: string) =>
+          language === "nl"
+            ? `Je taak "${taskText}" verloopt over 1 uur.`
+            : `Your task "${taskText}" expires in 1 hour.`,
+        subTitle:
+          language === "nl" ? "Subtaak binnen 1 uur" : "Subtask in 1 hour",
+        subBody: (todoText: string, subText: string) =>
+          language === "nl"
+            ? `De subtaak "${subText}" van "${todoText}" verloopt over 1 uur.`
+            : `The subtask "${subText}" for "${todoText}" expires in 1 hour.`,
+      },
+      {
+        key: "30m",
+        ms: 30 * 60 * 1000,
+        taskTitle:
+          language === "nl"
+            ? "Deadline binnen 30 minuten"
+            : "Deadline in 30 minutes",
+        taskBody: (taskText: string) =>
+          language === "nl"
+            ? `Je taak "${taskText}" verloopt over 30 minuten.`
+            : `Your task "${taskText}" expires in 30 minutes.`,
+        subTitle:
+          language === "nl"
+            ? "Subtaak binnen 30 minuten"
+            : "Subtask in 30 minutes",
+        subBody: (todoText: string, subText: string) =>
+          language === "nl"
+            ? `De subtaak "${subText}" van "${todoText}" verloopt over 30 minuten.`
+            : `The subtask "${subText}" for "${todoText}" expires in 30 minutes.`,
+      },
+    ];
+    const overdueTaskTitle =
+      language === "nl" ? "Deadline verlopen" : "Deadline missed";
+    const overdueTaskBody = (taskText: string) =>
+      language === "nl"
+        ? `De deadline voor "${taskText}" is verstreken.`
+        : `The deadline for "${taskText}" has passed.`;
+    const overdueSubTitle =
+      language === "nl"
+        ? "Subtaak deadline verlopen"
+        : "Subtask deadline missed";
+    const overdueSubBody = (todoText: string, subText: string) =>
+      language === "nl"
+        ? `De deadline van subtaak "${subText}" bij "${todoText}" is verstreken.`
+        : `The subtask "${subText}" in "${todoText}" has passed its deadline.`;
+    const checkDeadlines = async () => {
+      const now = Date.now();
+      const upcoming = new Set<string>();
+      for (const todo of todos) {
+        if (todo.deadline && !todo.done) {
+          const deadlineTime = new Date(todo.deadline).getTime();
+          const remaining = deadlineTime - now;
+          const baseId = `todo-${todo.createdAt || todo.text}-${todo.deadline}`;
+          for (const stage of notificationStages) {
+            if (remaining > 0 && remaining <= stage.ms) {
+              const stageId = `${baseId}-${stage.key}`;
+              upcoming.add(stageId);
+              if (!notifiedDeadlinesRef.current.has(stageId)) {
+                try {
+                  await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: stage.taskTitle,
+                      body: stage.taskBody(todo.text),
+                    },
+                    trigger: null,
+                  });
+                  notifiedDeadlinesRef.current.add(stageId);
+                } catch (err) {
+                  console.log(
+                    `Failed to schedule task notification (${stage.key}):`,
+                    err
+                  );
+                }
+              }
+            }
+          }
+          if (remaining <= 0) {
+            const overdueId = `${baseId}-overdue`;
+            upcoming.add(overdueId);
+            if (!notifiedDeadlinesRef.current.has(overdueId)) {
+              try {
+                await Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: overdueTaskTitle,
+                    body: overdueTaskBody(todo.text),
+                  },
+                  trigger: null,
+                });
+                notifiedDeadlinesRef.current.add(overdueId);
+              } catch (err) {
+                console.log(
+                  "Failed to schedule overdue task notification:",
+                  err
+                );
+              }
+            }
+          }
+        }
+        for (const sub of todo.subtasks) {
+          if (sub.deadline && !sub.done) {
+            const deadlineTime = new Date(sub.deadline).getTime();
+            const remaining = deadlineTime - now;
+            const baseId = `sub-${todo.createdAt || todo.text}-${
+              sub.createdAt || sub.text
+            }-${sub.deadline}`;
+            for (const stage of notificationStages) {
+              if (remaining > 0 && remaining <= stage.ms) {
+                const stageId = `${baseId}-${stage.key}`;
+                upcoming.add(stageId);
+                if (!notifiedDeadlinesRef.current.has(stageId)) {
+                  try {
+                    await Notifications.scheduleNotificationAsync({
+                      content: {
+                        title: stage.subTitle,
+                        body: stage.subBody(todo.text, sub.text),
+                      },
+                      trigger: null,
+                    });
+                    notifiedDeadlinesRef.current.add(stageId);
+                  } catch (err) {
+                    console.log(
+                      `Failed to schedule subtask notification (${stage.key}):`,
+                      err
+                    );
+                  }
+                }
+              }
+            }
+            if (remaining <= 0) {
+              const overdueId = `${baseId}-overdue`;
+              upcoming.add(overdueId);
+              if (!notifiedDeadlinesRef.current.has(overdueId)) {
+                try {
+                  await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: overdueSubTitle,
+                      body: overdueSubBody(todo.text, sub.text),
+                    },
+                    trigger: null,
+                  });
+                  notifiedDeadlinesRef.current.add(overdueId);
+                } catch (err) {
+                  console.log(
+                    "Failed to schedule overdue subtask notification:",
+                    err
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+      notifiedDeadlinesRef.current.forEach((id) => {
+        if (!upcoming.has(id)) {
+          notifiedDeadlinesRef.current.delete(id);
+        }
+      });
+    };
+    checkDeadlines();
+    const interval = setInterval(checkDeadlines, 60000);
+    return () => clearInterval(interval);
+  }, [todos, language, notificationsEnabled]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (!userId) {
+      const resetAction = CommonActions.reset({
+        index: 0,
+        routes: [{ name: "Login" }],
+      });
+      const parentNav = navigation.getParent();
+      if (parentNav) parentNav.dispatch(resetAction);
+      else navigation.dispatch(resetAction);
+    }
+  }, [authReady, userId, navigation]);
+
+  if (!authReady || !userId) {
+    return null;
+  }
   return (
     <View style={{ flex: 1, padding: 20, backgroundColor: colors.background }}>
+      {/* Header met title, taal en thema toggles */}
       <View
         style={{
           flexDirection: "row",
@@ -367,9 +932,44 @@ const List: React.FC<Props> = ({
               {theme === "light" ? "🌙" : "☀️"}
             </Text>
           </TouchableOpacity>
+
+          {/* Sorteer knop: wissel tussen laatst toegevoegd / eerst toegevoegd */}
+          <TouchableOpacity
+            onPress={toggleSortOrder}
+            style={{
+              padding: 8,
+              backgroundColor: colors.toggleButton,
+              borderRadius: 8,
+              marginLeft: 8,
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "600" }}>
+              {sortOrder === "oldest" ? "↓" : "↑"}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Prioriteit sorteer richting knop: hoog->laag of laag->hoog */}
+          <TouchableOpacity
+            onPress={togglePrioritySort}
+            style={{
+              padding: 8,
+              backgroundColor: colors.toggleButton,
+              borderRadius: 8,
+              marginLeft: 8,
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "600" }}>
+              {prioritySort === "highToLow" ? "P↓" : "P↑"}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
+      {/* Tabs: Tasks / Archive */}
       <View style={{ flexDirection: "row", marginBottom: 20 }}>
         <TouchableOpacity
           onPress={() => setShowArchive(false)}
@@ -405,8 +1005,10 @@ const List: React.FC<Props> = ({
         </TouchableOpacity>
       </View>
 
+      {/* Als we het hoofd taken scherm tonen */}
       {!showArchive ? (
         <>
+          {/* Formulier om taak toe te voegen + datum/tijd buttons */}
           <View
             style={{
               flexDirection: "row",
@@ -428,8 +1030,46 @@ const List: React.FC<Props> = ({
               placeholderTextColor={colors.placeholder}
             />
 
+            {/* Prioriteit select (kleine knoppen) */}
+            <View style={{ flexDirection: "row", marginLeft: 8 }}>
+              <TouchableOpacity
+                onPress={() => setNewPriority("high")}
+                style={{
+                  padding: 8,
+                  borderRadius: 8,
+                  backgroundColor: newPriority === "high" ? "#ff6b6b" : "#444",
+                  marginRight: 4,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600" }}>H</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setNewPriority("medium")}
+                style={{
+                  padding: 8,
+                  borderRadius: 8,
+                  backgroundColor:
+                    newPriority === "medium" ? "#ffb366" : "#444",
+                  marginRight: 4,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600" }}>M</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setNewPriority("low")}
+                style={{
+                  padding: 8,
+                  borderRadius: 8,
+                  backgroundColor: newPriority === "low" ? "#6bc66b" : "#444",
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600" }}>L</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Datum picker button */}
             <TouchableOpacity
-              onPress={() => setShowDatePicker(true)}
+              onPress={openTaskDate}
               style={{
                 marginLeft: 5,
                 padding: 10,
@@ -442,8 +1082,9 @@ const List: React.FC<Props> = ({
               <Text style={{ color: "#fff" }}>📅</Text>
             </TouchableOpacity>
 
+            {/* Tijd picker button */}
             <TouchableOpacity
-              onPress={() => setShowTimePicker(true)}
+              onPress={openTaskTime}
               style={{
                 marginLeft: 5,
                 padding: 10,
@@ -456,6 +1097,7 @@ const List: React.FC<Props> = ({
               <Text style={{ color: "#fff" }}>⏰</Text>
             </TouchableOpacity>
 
+            {/* Add knop */}
             <TouchableOpacity
               onPress={addTodo}
               style={{
@@ -470,7 +1112,8 @@ const List: React.FC<Props> = ({
               <Text style={{ color: "#fff" }}>+</Text>
             </TouchableOpacity>
 
-            {showTimePicker && (
+            {/* Native time picker component (alleen niet-web) */}
+            {showTimePicker && Platform.OS !== "web" && (
               <DateTimePicker
                 value={selectedTime || new Date()}
                 mode="time"
@@ -483,7 +1126,8 @@ const List: React.FC<Props> = ({
             )}
           </View>
 
-          {showDatePicker && (
+          {/* Native datepicker */}
+          {showDatePicker && Platform.OS !== "web" && (
             <DateTimePicker
               value={selectedDate || new Date()}
               mode="date"
@@ -495,198 +1139,145 @@ const List: React.FC<Props> = ({
             />
           )}
 
-          <FlatList
-            data={todos}
-            keyExtractor={(_, index) => index.toString()}
-            renderItem={({ item, index }) => {
-              const deadlineDate = item.deadline
-                ? new Date(item.deadline)
-                : null;
-              const today = new Date();
-              const isSameDay =
-                deadlineDate &&
-                deadlineDate.getDate() === today.getDate() &&
-                deadlineDate.getMonth() === today.getMonth() &&
-                deadlineDate.getFullYear() === today.getFullYear();
+          {/* Lijst met actieve taken (gesorteerd op priority + createdAt) */}
+          {(() => {
+            const displayTodos = buildDisplayList(todos);
+            return (
+              <FlatList
+                data={displayTodos}
+                keyExtractor={(d) => d.originalIndex.toString()}
+                renderItem={({ item: displayEntry }) => {
+                  const item = displayEntry.item;
+                  const originalIndex = displayEntry.originalIndex;
+                  // Bereken deadline status voor kleur/waarschuwing
+                  const deadlineDate = item.deadline
+                    ? new Date(item.deadline)
+                    : null;
+                  const today = new Date();
+                  const isSameDay =
+                    deadlineDate &&
+                    deadlineDate.getDate() === today.getDate() &&
+                    deadlineDate.getMonth() === today.getMonth() &&
+                    deadlineDate.getFullYear() === today.getFullYear();
 
-              const deadlinePassed =
-                deadlineDate && (deadlineDate < today || isSameDay);
+                  const deadlinePassed =
+                    deadlineDate && (deadlineDate < today || isSameDay);
 
-              return (
-                <View
-                  style={{
-                    marginBottom: 15,
-                    backgroundColor: colors.formBackground,
-                    padding: 15,
-                    borderRadius: 12,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <TouchableOpacity
-                      onPress={() => toggleTodo(index)}
-                      style={{ marginRight: 15 }}
+                  return (
+                    <View
+                      style={{
+                        marginBottom: 15,
+                        backgroundColor: colors.formBackground,
+                        padding: 15,
+                        borderRadius: 12,
+                      }}
                     >
-                      <Ionicons
-                        name={
-                          item.done ? "checkmark-circle" : "ellipse-outline"
-                        }
-                        size={24}
-                        color={item.done ? "#28a745" : "#6c757d"}
-                      />
-                    </TouchableOpacity>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontSize: 16,
-                          textDecorationLine: item.done
-                            ? "line-through"
-                            : "none",
-                          color: item.done ? colors.doneText : colors.text,
-                        }}
-                      >
-                        {item.text}
-                      </Text>
-                      {item.deadline && (
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            color: deadlinePassed ? "red" : "#6c757d",
-                          }}
-                        >
-                          {translations[language].deadline}:{" "}
-                          {formatDate(item.deadline)}
-                        </Text>
-                      )}
-                      {item.image && (
-                        <Image
-                          source={{ uri: item.image }}
-                          style={{
-                            width: 100,
-                            height: 100,
-                            marginTop: 10,
-                            borderRadius: 8,
-                          }}
-                        />
-                      )}
-                      <TouchableOpacity onPress={() => pickImage(false, index)}>
-                        <Text style={{ color: colors.addButton }}>
-                          📷 {translations[language].addPhoto}
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() =>
-                          pickImage(false, index, undefined, false, true)
-                        }
-                        style={{ marginTop: 5 }}
-                      >
-                        <Text style={{ color: colors.addButton }}>
-                          🖼️ {translations[language].pickFromGallery}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => archiveTodo(index)}
-                      style={{ marginLeft: 10 }}
-                    >
-                      <Ionicons
-                        name="archive"
-                        size={24}
-                        color={colors.archiveButton}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => removeTodo(index)}
-                      style={{ marginLeft: 10 }}
-                    >
-                      <Ionicons
-                        name="trash"
-                        size={24}
-                        color={colors.deleteButton}
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  {item.subtasks.map((sub, subIndex) => {
-                    const subDeadlineDate = sub.deadline
-                      ? new Date(sub.deadline)
-                      : null;
-                    const isSubSameDay =
-                      subDeadlineDate &&
-                      subDeadlineDate.getDate() === today.getDate() &&
-                      subDeadlineDate.getMonth() === today.getMonth() &&
-                      subDeadlineDate.getFullYear() === today.getFullYear();
-
-                    const subDeadlinePassed =
-                      subDeadlineDate &&
-                      (subDeadlineDate < today || isSubSameDay);
-
-                    return (
+                      {/* Bovenste rij met checkbox, tekst, foto en acties */}
                       <View
-                        key={subIndex}
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
-                          marginLeft: 25,
-                          marginBottom: 5,
-                          flexWrap: "wrap",
+                          marginBottom: 10,
                         }}
                       >
                         <TouchableOpacity
-                          onPress={() => toggleSubtask(index, subIndex)}
-                          style={{ marginRight: 10 }}
+                          onPress={() => toggleTodo(originalIndex)}
+                          style={{ marginRight: 15 }}
                         >
                           <Ionicons
                             name={
-                              sub.done ? "checkmark-circle" : "ellipse-outline"
+                              item.done ? "checkmark-circle" : "ellipse-outline"
                             }
-                            size={20}
-                            color={sub.done ? "#28a745" : "#6c757d"}
+                            size={24}
+                            color={item.done ? "#28a745" : "#6c757d"}
                           />
                         </TouchableOpacity>
                         <View style={{ flex: 1 }}>
+                          {/* Prioriteit label */}
+                          {item.priority && (
+                            <Text
+                              style={{
+                                fontSize: 12,
+                                color:
+                                  item.priority === "high"
+                                    ? "#ff6b6b"
+                                    : item.priority === "medium"
+                                    ? "#ffb366"
+                                    : "#6bc66b",
+                                fontWeight: "700",
+                                marginBottom: 4,
+                              }}
+                            >
+                              {item.priority.toUpperCase()}
+                            </Text>
+                          )}
                           <Text
                             style={{
-                              color: sub.done
-                                ? colors.doneText
-                                : subDeadlinePassed
-                                ? "red"
-                                : colors.text,
+                              fontSize: 16,
+                              textDecorationLine: item.done
+                                ? "line-through"
+                                : "none",
+                              color: item.done ? colors.doneText : colors.text,
                             }}
                           >
-                            {sub.text}{" "}
-                            {sub.deadline &&
-                              `(${
-                                translations[language].deadline
-                              }: ${formatDate(sub.deadline)})`}
+                            {item.text}
                           </Text>
-                          {sub.image && (
-                            <Image
-                              source={{ uri: sub.image }}
+                          {/* Toon wanneer taak toegevoegd is */}
+                          {item.createdAt && (
+                            <Text
                               style={{
-                                width: 80,
-                                height: 80,
-                                marginTop: 5,
+                                fontSize: 12,
+                                color: "#6c757d",
+                                marginTop: 4,
+                              }}
+                            >
+                              {(translations[language] as any).added ??
+                                (language === "nl" ? "Toegevoegd" : "Added")}
+                              : {formatDate(item.createdAt)}
+                            </Text>
+                          )}
+                          {/* Deadline */}
+                          {item.deadline && (
+                            <Text
+                              style={{
+                                fontSize: 12,
+                                color: deadlinePassed ? "red" : "#6c757d",
+                                marginTop: 4,
+                              }}
+                            >
+                              {translations[language].deadline}:{" "}
+                              {formatDate(item.deadline)}
+                            </Text>
+                          )}
+                          {item.image && (
+                            <Image
+                              source={{ uri: item.image }}
+                              style={{
+                                width: 100,
+                                height: 100,
+                                marginTop: 10,
                                 borderRadius: 8,
                               }}
                             />
                           )}
+                          {/* Knoppen om afbeelding toe te voegen (camera / galerij) */}
                           <TouchableOpacity
-                            onPress={() => pickImage(true, index, subIndex)}
+                            onPress={() => pickImage(false, originalIndex)}
                           >
                             <Text style={{ color: colors.addButton }}>
                               📷 {translations[language].addPhoto}
                             </Text>
                           </TouchableOpacity>
+
                           <TouchableOpacity
                             onPress={() =>
-                              pickImage(true, index, subIndex, true, true)
+                              pickImage(
+                                false,
+                                originalIndex,
+                                undefined,
+                                false,
+                                true
+                              )
                             }
                             style={{ marginTop: 5 }}
                           >
@@ -695,338 +1286,742 @@ const List: React.FC<Props> = ({
                             </Text>
                           </TouchableOpacity>
                         </View>
+                        {/* Archiveer en verwijder iconen */}
                         <TouchableOpacity
-                          onPress={() =>
-                            Alert.alert(
-                              translations[language].confirmDelete,
-                              translations[language].deleteSubtask,
-                              [
-                                {
-                                  text: translations[language].cancel,
-                                  style: "cancel",
-                                },
-                                {
-                                  text: translations[language].delete,
-                                  style: "destructive",
-                                  onPress: () => {
-                                    const updatedTodos = [...todos];
-                                    updatedTodos[index].subtasks = updatedTodos[
-                                      index
-                                    ].subtasks.filter((_, i) => i !== subIndex);
-                                    saveAll(updatedTodos, archivedTodos);
-                                  },
-                                },
-                              ]
-                            )
-                          }
+                          onPress={() => archiveTodo(originalIndex)}
+                          style={{ marginLeft: 10 }}
+                        >
+                          <Ionicons
+                            name="archive"
+                            size={24}
+                            color={colors.archiveButton}
+                          />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => removeTodo(originalIndex)}
                           style={{ marginLeft: 10 }}
                         >
                           <Ionicons
                             name="trash"
-                            size={20}
+                            size={24}
                             color={colors.deleteButton}
                           />
                         </TouchableOpacity>
                       </View>
-                    );
-                  })}
 
-                  <TouchableOpacity
-                    onPress={() => setEditingTodoIndex(index)}
-                    style={{ marginTop: 5 }}
-                  >
-                    <Text style={{ color: colors.addButton }}>
-                      + {translations[language].addSubtask}
-                    </Text>
-                  </TouchableOpacity>
+                      {/* Subtasks rendering */}
+                      {buildSubtaskDisplay(item.subtasks).map(
+                        ({ sub, originalIndex: subIndex }) => {
+                          // Toon wanneer subtask toegevoegd is (in sub-UI)
+                          const subAddedText = sub.createdAt
+                            ? `${
+                                (translations[language] as any).added ??
+                                (language === "nl" ? "Toegevoegd" : "Added")
+                              }: ${formatDate(sub.createdAt)}`
+                            : null;
+                          const subDeadlineDate = sub.deadline
+                            ? new Date(sub.deadline)
+                            : null;
+                          const isSubSameDay =
+                            subDeadlineDate &&
+                            subDeadlineDate.getDate() === today.getDate() &&
+                            subDeadlineDate.getMonth() === today.getMonth() &&
+                            subDeadlineDate.getFullYear() ===
+                              today.getFullYear();
 
-                  {editingTodoIndex === index && (
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        marginTop: 5,
-                        marginLeft: 25,
-                        alignItems: "center",
-                      }}
-                    >
-                      <TextInput
-                        placeholder={translations[language].newSubtask}
-                        value={subtaskText}
-                        onChangeText={setSubtaskText}
-                        style={{
-                          flex: 1,
-                          padding: 8,
-                          backgroundColor: colors.formBackground,
-                          color: colors.text,
-                          borderRadius: 8,
-                        }}
-                        placeholderTextColor={colors.placeholder}
-                      />
+                          const subDeadlinePassed =
+                            subDeadlineDate &&
+                            (subDeadlineDate < today || isSubSameDay);
 
-                      <TouchableOpacity
-                        onPress={() => setShowSubtaskDatePicker(true)}
-                        style={{
-                          marginLeft: 5,
-                          padding: 8,
-                          backgroundColor: "#6c757d",
-                          borderRadius: 8,
-                          justifyContent: "center",
-                          alignItems: "center",
-                        }}
-                      >
-                        <Text style={{ color: "#fff" }}>📅</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => setShowSubtaskTimePicker(true)}
-                        style={{
-                          marginLeft: 5,
-                          padding: 8,
-                          backgroundColor: "#6c757d",
-                          borderRadius: 8,
-                          justifyContent: "center",
-                          alignItems: "center",
-                        }}
-                      >
-                        <Text style={{ color: "#fff" }}>⏰</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => addSubtask(index)}
-                        style={{
-                          marginLeft: 5,
-                          padding: 8,
-                          backgroundColor: colors.addButton,
-                          borderRadius: 8,
-                          justifyContent: "center",
-                          alignItems: "center",
-                        }}
-                      >
-                        <Text style={{ color: "#fff" }}>+</Text>
-                      </TouchableOpacity>
-
-                      {showSubtaskDatePicker && (
-                        <DateTimePicker
-                          value={subtaskDate || new Date()}
-                          mode="date"
-                          display="default"
-                          onChange={(e: DateTimePickerEvent, date?: Date) => {
-                            setShowSubtaskDatePicker(false);
-                            if (date) setSubtaskDate(date);
-                          }}
-                        />
+                          return (
+                            <View
+                              key={subIndex}
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                marginLeft: 25,
+                                marginBottom: 5,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <TouchableOpacity
+                                onPress={() =>
+                                  toggleSubtask(originalIndex, subIndex)
+                                }
+                                style={{ marginRight: 10 }}
+                              >
+                                <Ionicons
+                                  name={
+                                    sub.done
+                                      ? "checkmark-circle"
+                                      : "ellipse-outline"
+                                  }
+                                  size={20}
+                                  color={sub.done ? "#28a745" : "#6c757d"}
+                                />
+                              </TouchableOpacity>
+                              <View style={{ flex: 1 }}>
+                                {sub.priority && (
+                                  <Text
+                                    style={{
+                                      fontSize: 12,
+                                      color: priorityColor(sub.priority),
+                                      fontWeight: "700",
+                                      marginBottom: 2,
+                                    }}
+                                  >
+                                    {sub.priority.toUpperCase()}
+                                  </Text>
+                                )}
+                                <Text
+                                  style={{
+                                    color: colors.text,
+                                    fontSize: 16,
+                                    textDecorationLine: sub.done
+                                      ? "line-through"
+                                      : "none",
+                                  }}
+                                >
+                                  {sub.text}
+                                </Text>
+                                {/* Toon wanneer subtask toegevoegd is */}
+                                {sub.createdAt && (
+                                  <Text
+                                    style={{
+                                      fontSize: 12,
+                                      color: "#6c757d",
+                                      marginTop: 2,
+                                    }}
+                                  >
+                                    {(translations[language] as any).added ??
+                                      (language === "nl"
+                                        ? "Toegevoegd"
+                                        : "Added")}
+                                    : {formatDate(sub.createdAt)}
+                                  </Text>
+                                )}
+                                {/* Deadline rood als verlopen/bijna verlopen, anders grijs */}
+                                {sub.deadline && (
+                                  <Text
+                                    style={{
+                                      fontSize: 12,
+                                      color:
+                                        sub.deadline &&
+                                        new Date(sub.deadline) < new Date()
+                                          ? "red"
+                                          : "#6c757d",
+                                      marginTop: 2,
+                                    }}
+                                  >
+                                    {translations[language].deadline}:{" "}
+                                    {formatDate(sub.deadline)}
+                                  </Text>
+                                )}
+                                {sub.image && (
+                                  <Image
+                                    source={{ uri: sub.image }}
+                                    style={{
+                                      width: 80,
+                                      height: 80,
+                                      marginTop: 5,
+                                      borderRadius: 8,
+                                    }}
+                                  />
+                                )}
+                                {/* Zet de knoppen onder elkaar */}
+                                <View
+                                  style={{
+                                    flexDirection: "column",
+                                    marginTop: 5,
+                                  }}
+                                >
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      pickImage(true, originalIndex, subIndex)
+                                    }
+                                  >
+                                    <Text style={{ color: colors.addButton }}>
+                                      📷 {translations[language].addPhoto}
+                                    </Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      pickImage(
+                                        true,
+                                        originalIndex,
+                                        subIndex,
+                                        true,
+                                        true
+                                      )
+                                    }
+                                    style={{ marginTop: 5 }}
+                                  >
+                                    <Text style={{ color: colors.addButton }}>
+                                      🖼️{" "}
+                                      {translations[language].pickFromGallery}
+                                    </Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                              <TouchableOpacity
+                                onPress={() =>
+                                  confirmDelete(
+                                    translations[language].confirmDelete,
+                                    translations[language].deleteSubtask,
+                                    () => {
+                                      const updatedTodos = [...todos];
+                                      updatedTodos[originalIndex].subtasks =
+                                        updatedTodos[
+                                          originalIndex
+                                        ].subtasks.filter(
+                                          (_, i) => i !== subIndex
+                                        );
+                                      saveAll(updatedTodos, archivedTodos);
+                                    }
+                                  )
+                                }
+                                style={{ marginLeft: 10 }}
+                              >
+                                <Ionicons
+                                  name="trash"
+                                  size={20}
+                                  color={colors.deleteButton}
+                                />
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        }
                       )}
-                      {showSubtaskTimePicker && (
-                        <DateTimePicker
-                          value={subtaskTime || new Date()}
-                          mode="time"
-                          display="default"
-                          is24Hour={true}
-                          onChange={(e: DateTimePickerEvent, time?: Date) => {
-                            setShowSubtaskTimePicker(false);
-                            if (time) setSubtaskTime(time);
+
+                      <TouchableOpacity
+                        onPress={() => setEditingTodoIndex(originalIndex)}
+                        style={{ marginTop: 5 }}
+                      >
+                        <Text style={{ color: colors.addButton }}>
+                          + {translations[language].addSubtask}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {editingTodoIndex === originalIndex && (
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            marginTop: 5,
+                            marginLeft: 25,
+                            alignItems: "center",
                           }}
-                        />
+                        >
+                          <TextInput
+                            placeholder={translations[language].newSubtask}
+                            value={subtaskText}
+                            onChangeText={setSubtaskText}
+                            style={{
+                              flex: 1,
+                              padding: 8,
+                              backgroundColor: colors.formBackground,
+                              color: colors.text,
+                              borderRadius: 8,
+                            }}
+                            placeholderTextColor={colors.placeholder}
+                          />
+                          <View style={{ flexDirection: "row", marginLeft: 5 }}>
+                            <TouchableOpacity
+                              onPress={() => setNewSubtaskPriority("high")}
+                              style={{
+                                padding: 6,
+                                borderRadius: 8,
+                                backgroundColor:
+                                  newSubtaskPriority === "high"
+                                    ? "#ff6b6b"
+                                    : "#444",
+                                marginRight: 4,
+                              }}
+                            >
+                              <Text
+                                style={{ color: "#fff", fontWeight: "600" }}
+                              >
+                                H
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => setNewSubtaskPriority("medium")}
+                              style={{
+                                padding: 6,
+                                borderRadius: 8,
+                                backgroundColor:
+                                  newSubtaskPriority === "medium"
+                                    ? "#ffb366"
+                                    : "#444",
+                                marginRight: 4,
+                              }}
+                            >
+                              <Text
+                                style={{ color: "#fff", fontWeight: "600" }}
+                              >
+                                M
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => setNewSubtaskPriority("low")}
+                              style={{
+                                padding: 6,
+                                borderRadius: 8,
+                                backgroundColor:
+                                  newSubtaskPriority === "low"
+                                    ? "#6bc66b"
+                                    : "#444",
+                              }}
+                            >
+                              <Text
+                                style={{ color: "#fff", fontWeight: "600" }}
+                              >
+                                L
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                          <TouchableOpacity
+                            onPress={openSubtaskDate}
+                            style={{
+                              marginLeft: 5,
+                              padding: 8,
+                              backgroundColor: "#6c757d",
+                              borderRadius: 8,
+                              justifyContent: "center",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Text style={{ color: "#fff" }}>📅</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={openSubtaskTime}
+                            style={{
+                              marginLeft: 5,
+                              padding: 8,
+                              backgroundColor: "#6c757d",
+                              borderRadius: 8,
+                              justifyContent: "center",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Text style={{ color: "#fff" }}>⏰</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => addSubtask(originalIndex)}
+                            style={{
+                              marginLeft: 5,
+                              padding: 8,
+                              backgroundColor: colors.addButton,
+                              borderRadius: 8,
+                              justifyContent: "center",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Text style={{ color: "#fff" }}>+</Text>
+                          </TouchableOpacity>
+                        </View>
                       )}
                     </View>
-                  )}
-                </View>
-              );
-            }}
-          />
+                  );
+                }}
+              />
+            );
+          })()}
         </>
       ) : (
         <>
-          <FlatList
-            data={archivedTodos}
-            keyExtractor={(_, index) => `arch-${index}`}
-            renderItem={({ item, index }) => {
-              const deadlinePassed =
-                item.deadline && new Date(item.deadline) < new Date();
-              return (
-                <View
-                  style={{
-                    marginBottom: 15,
-                    backgroundColor: colors.formBackground,
-                    padding: 15,
-                    borderRadius: 12,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <TouchableOpacity
-                      onPress={() => toggleArchivedTodo(index)}
-                      style={{ marginRight: 15 }}
+          {/* Archive weergave: gebruikzelfde display-sortering (priority + createdAt) */}
+          {(() => {
+            const displayArchived = buildDisplayList(archivedTodos);
+            return (
+              <FlatList
+                data={displayArchived}
+                keyExtractor={(d) => `arch-${d.originalIndex}`}
+                renderItem={({ item: entry }) => {
+                  const item = entry.item;
+                  const originalArchiveIndex = entry.originalIndex;
+                  const deadlinePassed =
+                    item.deadline && new Date(item.deadline) < new Date();
+                  return (
+                    <View
+                      style={{
+                        marginBottom: 15,
+                        backgroundColor: colors.formBackground,
+                        padding: 15,
+                        borderRadius: 12,
+                      }}
                     >
-                      <Ionicons
-                        name={
-                          item.done ? "checkmark-circle" : "ellipse-outline"
-                        }
-                        size={24}
-                        color={item.done ? "#28a745" : "#6c757d"}
-                      />
-                    </TouchableOpacity>
-
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontSize: 16,
-                          textDecorationLine: item.done
-                            ? "line-through"
-                            : "none",
-                          color: item.done ? colors.doneText : colors.text,
-                        }}
-                      >
-                        {item.text}
-                      </Text>
-                      {item.deadline && (
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            color: deadlinePassed ? "red" : "#6c757d",
-                          }}
-                        >
-                          {translations[language].deadline}:{" "}
-                          {formatDate(item.deadline)}
-                        </Text>
-                      )}
-                      {item.image && (
-                        <Image
-                          source={{ uri: item.image }}
-                          style={{
-                            width: 100,
-                            height: 100,
-                            marginTop: 5,
-                            borderRadius: 8,
-                          }}
-                        />
-                      )}
-                      <TouchableOpacity
-                        onPress={() => pickImage(false, index, undefined, true)}
-                      >
-                        <Text style={{ color: colors.addButton }}>
-                          📷 {translations[language].addPhoto}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={{ flexDirection: "row" }}>
-                      <TouchableOpacity
-                        onPress={() => {
-                          const todoToUnarchive = archivedTodos[index];
-                          saveAll(
-                            [...todos, todoToUnarchive],
-                            archivedTodos.filter((_, i) => i !== index)
-                          );
-                        }}
-                        style={{ marginRight: 10 }}
-                      >
-                        <Ionicons name="arrow-undo" size={24} color="#007bff" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() =>
-                          Alert.alert(
-                            translations[language].confirmDelete,
-                            translations[language].deleteTask,
-                            [
-                              {
-                                text: translations[language].cancel,
-                                style: "cancel",
-                              },
-                              {
-                                text: translations[language].delete,
-                                style: "destructive",
-                                onPress: () =>
-                                  saveAll(
-                                    todos,
-                                    archivedTodos.filter((_, i) => i !== index)
-                                  ),
-                              },
-                            ]
-                          )
-                        }
-                      >
-                        <Ionicons
-                          name="trash"
-                          size={24}
-                          color={colors.deleteButton}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  {item.subtasks.map((sub, subIndex) => {
-                    const subDeadlinePassed =
-                      sub.deadline && new Date(sub.deadline) < new Date();
-                    return (
                       <View
-                        key={subIndex}
                         style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          marginLeft: 25,
-                          marginBottom: 5,
+                          flexDirection: "column", // Verander naar column voor betere layout
+                          marginBottom: 10,
                         }}
                       >
-                        <TouchableOpacity
-                          onPress={() => toggleArchivedSubtask(index, subIndex)}
-                          style={{ marginRight: 10 }}
+                        <View
+                          style={{ flexDirection: "row", alignItems: "center" }}
                         >
-                          <Ionicons
-                            name={
-                              sub.done ? "checkmark-circle" : "ellipse-outline"
-                            }
-                            size={20}
-                            color={sub.done ? "#28a745" : "#6c757d"}
-                          />
-                        </TouchableOpacity>
-                        <Text
-                          style={{
-                            color: sub.done
-                              ? colors.doneText
-                              : subDeadlinePassed
-                              ? "red"
-                              : colors.text,
-                          }}
-                        >
-                          {sub.text}{" "}
-                          {sub.deadline &&
-                            `(${translations[language].deadline}: ${formatDate(
-                              sub.deadline
-                            )})`}
-                        </Text>
-                        {sub.image && (
-                          <Image
-                            source={{ uri: sub.image }}
-                            style={{
-                              width: 80,
-                              height: 80,
-                              marginTop: 5,
-                              borderRadius: 8,
+                          <TouchableOpacity
+                            onPress={() => {
+                              const updatedArchived = [...archivedTodos];
+                              updatedArchived[originalArchiveIndex].done =
+                                !updatedArchived[originalArchiveIndex].done;
+                              saveAll(todos, updatedArchived);
                             }}
-                          />
-                        )}
-                        <TouchableOpacity
-                          onPress={() => pickImage(true, index, subIndex, true)}
-                        >
-                          <Text style={{ color: colors.addButton }}>
-                            📷 {translations[language].addPhoto}
-                          </Text>
-                        </TouchableOpacity>
+                            style={{ marginRight: 15 }}
+                          >
+                            <Ionicons
+                              name={
+                                item.done
+                                  ? "checkmark-circle"
+                                  : "ellipse-outline"
+                              }
+                              size={24}
+                              color={item.done ? "#28a745" : "#6c757d"}
+                            />
+                          </TouchableOpacity>
+
+                          <View style={{ flex: 1 }}>
+                            {/* Prioriteit label */}
+                            {item.priority && (
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  color:
+                                    item.priority === "high"
+                                      ? "#ff6b6b"
+                                      : item.priority === "medium"
+                                      ? "#ffb366"
+                                      : "#6bc66b",
+                                  fontWeight: "700",
+                                  marginBottom: 4,
+                                }}
+                              >
+                                {item.priority.toUpperCase()}
+                              </Text>
+                            )}
+
+                            <Text
+                              style={{
+                                fontSize: 16,
+                                textDecorationLine: item.done
+                                  ? "line-through"
+                                  : "none",
+                                color: item.done
+                                  ? colors.doneText
+                                  : colors.text,
+                              }}
+                            >
+                              {item.text}
+                            </Text>
+
+                            {/* Toegevoegd datum */}
+                            {item.createdAt && (
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  color: "#6c757d",
+                                  marginTop: 4,
+                                }}
+                              >
+                                {(translations[language] as any).added ??
+                                  (language === "nl" ? "Toegevoegd" : "Added")}
+                                : {formatDate(item.createdAt)}
+                              </Text>
+                            )}
+
+                            {/* Deadline */}
+                            {item.deadline && (
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  color: deadlinePassed ? "red" : "#6c757d",
+                                  marginTop: 4,
+                                }}
+                              >
+                                {translations[language].deadline}:{" "}
+                                {formatDate(item.deadline)}
+                              </Text>
+                            )}
+                            {item.image && (
+                              <Image
+                                source={{ uri: item.image }}
+                                style={{
+                                  width: 100,
+                                  height: 100,
+                                  marginTop: 10,
+                                  borderRadius: 8,
+                                }}
+                              />
+                            )}
+                            {/* Vervang deze View zodat de knoppen onder elkaar staan */}
+                            <View style={{ marginTop: 5 }}>
+                              <TouchableOpacity
+                                onPress={() =>
+                                  pickImage(
+                                    false,
+                                    originalArchiveIndex,
+                                    undefined,
+                                    true
+                                  )
+                                }
+                              >
+                                <Text style={{ color: colors.addButton }}>
+                                  📷 {translations[language].addPhoto}
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() =>
+                                  pickImage(
+                                    false,
+                                    originalArchiveIndex,
+                                    undefined,
+                                    true,
+                                    true
+                                  )
+                                }
+                                style={{ marginTop: 5 }}
+                              >
+                                <Text style={{ color: colors.addButton }}>
+                                  🖼️ {translations[language].pickFromGallery}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          <View style={{ flexDirection: "row" }}>
+                            {/* Undo (unarchive) */}
+                            <TouchableOpacity
+                              onPress={() => {
+                                const todoToUnarchive =
+                                  archivedTodos[originalArchiveIndex];
+                                saveAll(
+                                  [...todos, todoToUnarchive],
+                                  archivedTodos.filter(
+                                    (_, i) => i !== originalArchiveIndex
+                                  )
+                                );
+                              }}
+                              style={{ marginRight: 10 }}
+                            >
+                              <Ionicons
+                                name="arrow-undo"
+                                size={24}
+                                color="#007bff"
+                              />
+                            </TouchableOpacity>
+                            {/* Permanent verwijderen uit archief */}
+                            <TouchableOpacity
+                              onPress={() =>
+                                confirmDelete(
+                                  translations[language].confirmDelete,
+                                  translations[language].deleteTask,
+                                  () =>
+                                    saveAll(
+                                      todos,
+                                      archivedTodos.filter(
+                                        (_, i) => i !== originalArchiveIndex
+                                      )
+                                    )
+                                )
+                              }
+                            >
+                              <Ionicons
+                                name="trash"
+                                size={24}
+                                color={colors.deleteButton}
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+
+                        {/* Subtasks in archief */}
+                        {item.subtasks.map((sub, subIndex) => {
+                          const subAddedText = sub.createdAt
+                            ? `${
+                                (translations[language] as any).added ??
+                                (language === "nl" ? "Toegevoegd" : "Added")
+                              }: ${formatDate(sub.createdAt)}`
+                            : null;
+                          const subDeadlinePassed =
+                            sub.deadline && new Date(sub.deadline) < new Date();
+                          return (
+                            <View
+                              key={subIndex}
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                marginLeft: 25,
+                                marginBottom: 5,
+                                flexWrap: "wrap", // voeg flexWrap toe voor consistentie
+                              }}
+                            >
+                              <TouchableOpacity
+                                onPress={() => {
+                                  const updatedArchived = [...archivedTodos];
+                                  updatedArchived[
+                                    originalArchiveIndex
+                                  ].subtasks[subIndex].done =
+                                    !updatedArchived[originalArchiveIndex]
+                                      .subtasks[subIndex].done;
+                                  saveAll(todos, updatedArchived);
+                                }}
+                                style={{ marginRight: 10 }}
+                              >
+                                <Ionicons
+                                  name={
+                                    sub.done
+                                      ? "checkmark-circle"
+                                      : "ellipse-outline"
+                                  }
+                                  size={20}
+                                  color={sub.done ? "#28a745" : "#6c757d"}
+                                />
+                              </TouchableOpacity>
+                              <View style={{ flex: 1 }}>
+                                {sub.priority && (
+                                  <Text
+                                    style={{
+                                      fontSize: 12,
+                                      color: priorityColor(sub.priority),
+                                      fontWeight: "700",
+                                      marginBottom: 2,
+                                    }}
+                                  >
+                                    {sub.priority.toUpperCase()}
+                                  </Text>
+                                )}
+                                <Text
+                                  style={{
+                                    color: colors.text,
+                                    fontSize: 16,
+                                    textDecorationLine: sub.done
+                                      ? "line-through"
+                                      : "none",
+                                  }}
+                                >
+                                  {sub.text}
+                                </Text>
+                                {/* Toegevoegd grijs, onder naam */}
+                                {sub.createdAt && (
+                                  <Text
+                                    style={{
+                                      fontSize: 12,
+                                      color: "#6c757d",
+                                      marginTop: 2,
+                                    }}
+                                  >
+                                    {(translations[language] as any).added ??
+                                      (language === "nl"
+                                        ? "Toegevoegd"
+                                        : "Added")}
+                                    : {formatDate(sub.createdAt)}
+                                  </Text>
+                                )}
+                                {/* Deadline onder toegevoegd, rood als verlopen/bijna verlopen, anders grijs */}
+                                {sub.deadline && (
+                                  <Text
+                                    style={{
+                                      fontSize: 12,
+                                      color:
+                                        new Date(sub.deadline) < new Date()
+                                          ? "red"
+                                          : "#6c757d",
+                                      marginTop: 2,
+                                    }}
+                                  >
+                                    {translations[language].deadline}:{" "}
+                                    {formatDate(sub.deadline)}
+                                  </Text>
+                                )}
+                                {sub.image && (
+                                  <Image
+                                    source={{ uri: sub.image }}
+                                    style={{
+                                      width: 80,
+                                      height: 80,
+                                      marginTop: 5,
+                                      borderRadius: 8,
+                                    }}
+                                  />
+                                )}
+                                {/* Zet de knoppen onder elkaar */}
+                                <View
+                                  style={{
+                                    flexDirection: "column",
+                                    marginTop: 5,
+                                  }}
+                                >
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      pickImage(
+                                        true,
+                                        originalArchiveIndex,
+                                        subIndex,
+                                        true
+                                      )
+                                    }
+                                  >
+                                    <Text style={{ color: colors.addButton }}>
+                                      📷 {translations[language].addPhoto}
+                                    </Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      pickImage(
+                                        true,
+                                        originalArchiveIndex,
+                                        subIndex,
+                                        true,
+                                        true
+                                      )
+                                    }
+                                    style={{ marginTop: 5 }}
+                                  >
+                                    <Text style={{ color: colors.addButton }}>
+                                      🖼️{" "}
+                                      {translations[language].pickFromGallery}
+                                    </Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                              <TouchableOpacity
+                                onPress={() =>
+                                  confirmDelete(
+                                    translations[language].confirmDelete,
+                                    translations[language].deleteSubtask,
+                                    () => {
+                                      const updatedTodos = [...todos];
+                                      updatedTodos[
+                                        originalArchiveIndex
+                                      ].subtasks = updatedTodos[
+                                        originalArchiveIndex
+                                      ].subtasks.filter(
+                                        (_, i) => i !== subIndex
+                                      );
+                                      saveAll(updatedTodos, archivedTodos);
+                                    }
+                                  )
+                                }
+                                style={{ marginLeft: 10 }}
+                              >
+                                <Ionicons
+                                  name="trash"
+                                  size={20}
+                                  color={colors.deleteButton}
+                                />
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })}
                       </View>
-                    );
-                  })}
-                </View>
-              );
-            }}
-          />
+                    </View>
+                  );
+                }}
+              />
+            );
+          })()}
         </>
       )}
 
+      {/* Logout knop (bewaar eerst) */}
       <TouchableOpacity
         onPress={logout}
         style={{

@@ -13,17 +13,36 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.galaxiesFire",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "We gebruiken je locatie om je te waarschuwen wanneer je in de buurt bent van taken.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Je locatie is nodig om meldingen te versturen wanneer je in de buurt komt van taken, ook als de app op de achtergrond draait.",
+        "NSLocationAlwaysUsageDescription": "Je locatie is nodig om meldingen te versturen wanneer je in de buurt komt van taken, ook als de app op de achtergrond draait.",
+        "UIBackgroundModes": ["location"]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.anonymous.galaxiesFire",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3fe5f229-24c7-4b14-9b97-8286c3064ede"
+      }
     }
   }
 }

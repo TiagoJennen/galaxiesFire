@@ -18,8 +18,13 @@ import {
 } from "firebase/auth";
 import { translations } from "../../translations";
 
+// Props die de login screen verwacht:
+// - theme: 'light' of 'dark' voor styling
+// - toggleTheme: functie om thema te wisselen
+// - language: 'nl' of 'en' voor meertaligheid
+// - toggleLanguage: functie om taal te wisselen
+
 interface Props {
-  // Interface dark/light mode en taal
   theme: "light" | "dark";
   toggleTheme: () => void;
   language: "nl" | "en";
@@ -27,16 +32,18 @@ interface Props {
 }
 
 const Login: React.FC<Props> = ({
-  // Hoofdfunctie
+  // component props worden hier ontdaan
   theme,
   toggleTheme,
   language,
   toggleLanguage,
 }) => {
+  // lokale state voor form velden en laadstatus
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // state voor schermgrootte en oriëntatie zodat layout reageert
   const [screenWidth, setScreenWidth] = useState(
     Dimensions.get("window").width
   );
@@ -48,32 +55,36 @@ const Login: React.FC<Props> = ({
   );
 
   useEffect(() => {
-    // Detecteert oriëntatie verandering
+    // Luister naar veranderingen in schermgrootte (rotatie/resize)
     const subscription = Dimensions.addEventListener("change", ({ window }) => {
       setScreenWidth(window.width);
       setScreenHeight(window.height);
       setOrientation(window.width < window.height ? "portrait" : "landscape");
     });
+    // clean-up bij unmount
     return () => subscription?.remove();
   }, []);
 
+  // Functie om bestaande gebruiker in te laten loggen met Firebase Auth
   const signIn = async () => {
-    // Inloggen functie
     setLoading(true);
     try {
       await signInWithEmailAndPassword(FIREBASE_AUTH, email, password);
+      // bij succesvolle login wordt navigation/redirect ergens anders afgehandeld
     } catch (error: any) {
+      // toon foutmelding in de geselecteerde taal
       alert(translations[language].loginFailed + " " + error.message);
     } finally {
       setLoading(false);
     }
   };
 
+  // Functie om nieuwe gebruiker te registreren met Firebase Auth
   const signUp = async () => {
-    // Registreren functie
     setLoading(true);
     try {
       await createUserWithEmailAndPassword(FIREBASE_AUTH, email, password);
+      // na registratie informeren we de gebruiker om zijn/haar mail te checken
       alert(translations[language].checkMail);
     } catch (error: any) {
       alert(translations[language].signupFailed + " " + error.message);
@@ -82,8 +93,8 @@ const Login: React.FC<Props> = ({
     }
   };
 
+  // Dynamische styles die reageren op thema en oriëntatie
   const styles = StyleSheet.create({
-    // Styling
     container: {
       flex: 1,
       backgroundColor: theme === "light" ? "#3A86FFFF" : "#222",
@@ -157,15 +168,18 @@ const Login: React.FC<Props> = ({
 
   return (
     <View style={styles.container}>
+      {/* Header: titel en knoppen om taal/thema te wisselen */}
       <View style={styles.header}>
         <Text style={styles.title}>{translations[language].welcome}</Text>
         <View style={styles.headerButtons}>
+          {/* Taal wisselknop - toont huidige taal (NL/EN) */}
           <TouchableOpacity
             style={styles.languageButton}
             onPress={toggleLanguage}
           >
             <Text style={styles.buttonText}>{language.toUpperCase()}</Text>
           </TouchableOpacity>
+          {/* Thema wisselknop - toont icoon voor dag/nacht */}
           <TouchableOpacity style={styles.toggleButton} onPress={toggleTheme}>
             <Text style={styles.buttonText}>
               {theme === "light" ? "🌙" : "☀️"}
@@ -174,12 +188,14 @@ const Login: React.FC<Props> = ({
         </View>
       </View>
 
+      {/* KeyboardAvoidingView voorkomt dat het toetsenbord velden bedekt op iOS */}
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
           <View style={styles.formBox}>
+            {/* Formulier: email + wachtwoord */}
             <View style={styles.inputContainer}>
               <Text style={styles.label}>{translations[language].email}</Text>
               <TextInput
@@ -205,6 +221,7 @@ const Login: React.FC<Props> = ({
               />
             </View>
 
+            {/* Toon laadindicator tijdens netwerkacties */}
             {loading ? (
               <ActivityIndicator
                 size="large"
@@ -213,12 +230,14 @@ const Login: React.FC<Props> = ({
               />
             ) : (
               <>
+                {/* Login knop */}
                 <TouchableOpacity style={styles.button} onPress={signIn}>
                   <Text style={styles.buttonText}>
                     {translations[language].login}
                   </Text>
                 </TouchableOpacity>
 
+                {/* Registratie knop */}
                 <TouchableOpacity
                   style={[styles.button, { marginTop: 10 }]}
                   onPress={signUp}
