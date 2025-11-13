@@ -8,6 +8,8 @@ import {
   Alert,
   Image,
   Platform,
+  Modal,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, {
@@ -21,6 +23,50 @@ import { translations } from "../../translations";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import { useNavigation, CommonActions } from "@react-navigation/native";
+import MapLibreGL from "@maplibre/maplibre-react-native";
+import { Region } from "react-native-maps";
+import * as Location from "expo-location";
+import {
+  initializeGeofenceTask,
+  syncGeofenceTargets,
+  clearGeofenceTaskState,
+} from "../background/geofenceTask";
+
+const DEFAULT_REGION: Region = {
+  latitude: 52.3702,
+  longitude: 4.8952,
+  latitudeDelta: 0.05,
+  longitudeDelta: 0.05,
+};
+
+const MAPLIBRE_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+const DEFAULT_CAMERA_ZOOM = 12;
+const SELECTED_CAMERA_ZOOM = 14;
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const regionToZoomLevel = (region?: Region | null) => {
+  if (!region || !region.latitudeDelta) return null;
+  const zoomApprox = Math.log2(360 / region.latitudeDelta);
+  return clamp(zoomApprox, 3, 18);
+};
+
+const extractLonLatFromEvent = (
+  event: any
+): { latitude: number; longitude: number } | null => {
+  const candidate =
+    event?.geometry?.coordinates ??
+    event?.nativeEvent?.geometry?.coordinates ??
+    (Array.isArray(event?.features) &&
+      event.features[0]?.geometry?.coordinates);
+  if (!Array.isArray(candidate) || candidate.length < 2) return null;
+  const [longitude, latitude] = candidate;
+  if (typeof longitude !== "number" || typeof latitude !== "number") {
+    return null;
+  }
+  return { latitude, longitude };
+};
 
 /*
   Interfaces voor taken en subtaken.
@@ -45,7 +91,10 @@ interface Todo {
   image?: string | null;
   createdAt?: string | null;
   priority?: "low" | "medium" | "high";
+  location?: LatLng | null;
 }
+
+type LatLng = { latitude: number; longitude: number };
 
 /*
   Props die de List component verwacht:
@@ -95,8 +144,28 @@ const List: React.FC<Props> = ({
   >("medium");
   // Sorteervolgorde: 'oldest' = eerst toegevoegd bovenaan, 'newest' = laatst toegevoegd bovenaan
   const [sortOrder, setSortOrder] = useState<"oldest" | "newest">("oldest");
+  const [selectedLocation, setSelectedLocation] = useState<LatLng | null>(null);
+  const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [mapRegion, setMapRegion] = useState<Region | null>(null);
+  const [locationPermissionGranted, setLocationPermissionGranted] =
+    useState(false);
+  const [locationHelperMessage, setLocationHelperMessage] = useState<
+    string | null
+  >(null);
+  const dismissLocationHelperMessage = () => setLocationHelperMessage(null);
+  const [locationLoading, setLocationLoading] = useState(false);
   const toggleSortOrder = () =>
     setSortOrder((s) => (s === "oldest" ? "newest" : "oldest"));
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    try {
+      MapLibreGL.setAccessToken?.("");
+      MapLibreGL.setTelemetryEnabled?.(false);
+    } catch (err) {
+      console.log("MapLibre init error:", err);
+    }
+  }, []);
 
   // Prioriteits-sorteerrichting: highToLow of lowToHigh
   const [prioritySort, setPrioritySort] = useState<"highToLow" | "lowToHigh">(
@@ -167,7 +236,21 @@ const List: React.FC<Props> = ({
     archiveButton: "#ff8800",
     logoutButton: "#ff0000ff",
     toggleButton: "#6c757d",
+    warningBackground: theme === "light" ? "#fff4e5" : "#4a3a1a",
+    warningText: theme === "light" ? "#a15c00" : "#ffcc80",
   };
+
+  const geofenceTargetsFromTodos = (list: Todo[]) =>
+    list
+      .filter((todo) => todo.location)
+      .map((todo) => ({
+        id: `${todo.createdAt ?? todo.text}-${todo.location?.latitude ?? 0}-${
+          todo.location?.longitude ?? 0
+        }`,
+        title: todo.text,
+        latitude: todo.location!.latitude,
+        longitude: todo.location!.longitude,
+      }));
 
   // formatDate: zet ISO/string datum om naar leesbare tekst gebaseerd op taal
   const formatDate = (dateString?: string | null) => {
@@ -196,6 +279,7 @@ const List: React.FC<Props> = ({
         createdAt: todo.createdAt || null,
         priority: todo.priority || null,
         image: todo.image || null,
+        location: todo.location || null,
         subtasks: todo.subtasks.map((sub) => ({
           ...sub,
           deadline: sub.deadline || null,
@@ -210,6 +294,7 @@ const List: React.FC<Props> = ({
         createdAt: todo.createdAt || null,
         priority: todo.priority || null,
         image: todo.image || null,
+        location: todo.location || null,
         subtasks: todo.subtasks.map((sub) => ({
           ...sub,
           deadline: sub.deadline || null,
@@ -246,8 +331,8 @@ const List: React.FC<Props> = ({
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, async (user) => {
       if (user) {
-        // Ingelogde gebruiker: laad user-specific storage + firestore
         setUserId(user.uid);
+        await AsyncStorage.setItem("current_user_id", user.uid);
         const savedTodos = await AsyncStorage.getItem(`todos_${user.uid}`);
         if (savedTodos) setTodos(JSON.parse(savedTodos));
         const savedArchive = await AsyncStorage.getItem(`archive_${user.uid}`);
@@ -256,6 +341,8 @@ const List: React.FC<Props> = ({
         setTodos(firebaseData.todos);
         setArchivedTodos(firebaseData.archive);
       } else {
+        await AsyncStorage.removeItem("current_user_id");
+        await clearGeofenceTaskState();
         setUserId(null);
         setTodos([]);
         setArchivedTodos([]);
@@ -287,6 +374,11 @@ const List: React.FC<Props> = ({
       );
       AsyncStorage.setItem("archive_local", JSON.stringify(newArchived)).catch(
         (e) => console.log("Fout bij opslaan archief lokaal (local):", e)
+      );
+    }
+    if (Platform.OS !== "web" && userId && locationPermissionGranted) {
+      syncGeofenceTargets(userId, geofenceTargetsFromTodos(newTodos)).catch(
+        (err) => console.log("Geofence sync failed:", err)
       );
     }
   };
@@ -352,12 +444,15 @@ const List: React.FC<Props> = ({
       image: null,
       createdAt: new Date().toISOString(),
       priority: newPriority,
+      location: selectedLocation,
     };
 
     saveAll([...todos, newTodo], archivedTodos);
     setTask("");
     setSelectedDate(null);
     setSelectedTime(null);
+    setSelectedLocation(null);
+    setMapRegion(null);
   };
 
   // Wissel done status voor taak
@@ -530,6 +625,8 @@ const List: React.FC<Props> = ({
   // Logout: bewaar eerst naar firebase, daarna sign out
   const logout = async () => {
     if (!userId) return;
+    await syncGeofenceTargets(userId, []);
+    await clearGeofenceTaskState(userId);
     await saveTodosFirebase(userId, todos, archivedTodos);
     await signOut(FIREBASE_AUTH);
   };
@@ -617,6 +714,143 @@ const List: React.FC<Props> = ({
       return;
     }
     setShowSubtaskTimePicker(true);
+  };
+
+  const openLocationPicker = async () => {
+    if (Platform.OS === "web") {
+      showInputWarning(
+        language === "nl"
+          ? "Locatieselectie wordt op web momenteel niet ondersteund."
+          : "Location picking is not supported on web."
+      );
+      return;
+    }
+    try {
+      setLocationHelperMessage(null);
+      setLocationLoading(true);
+      setLocationModalVisible(true);
+      let nextRegion = mapRegion ?? {
+        ...DEFAULT_REGION,
+      };
+      const servicesEnabled =
+        (await Location.hasServicesEnabledAsync?.()) ?? true;
+      if (!servicesEnabled) {
+        setLocationHelperMessage(
+          language === "nl"
+            ? "Locatieservices staan uit. Kies handmatig een locatie op de kaart."
+            : "Location services are disabled. Select a location manually on the map."
+        );
+      } else if (
+        Location?.requestForegroundPermissionsAsync &&
+        Location?.getCurrentPositionAsync
+      ) {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        setLocationPermissionGranted(status === "granted");
+        if (status === "granted") {
+          try {
+            const lastKnown = await Location.getLastKnownPositionAsync();
+            const current =
+              lastKnown ??
+              (await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Balanced,
+              }));
+            nextRegion = {
+              latitude: current.coords.latitude,
+              longitude: current.coords.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            };
+          } catch (err) {
+            console.log("Kon huidige locatie niet ophalen:", err);
+            setLocationHelperMessage(
+              language === "nl"
+                ? "Kon huidige locatie niet ophalen. Kies handmatig een locatie."
+                : "Unable to fetch current location. Please pick a spot manually."
+            );
+          }
+        } else {
+          setLocationHelperMessage(
+            language === "nl"
+              ? "Locatietoegang geweigerd. Kies handmatig een locatie op de kaart."
+              : "Location access denied. Select a location manually on the map."
+          );
+        }
+      } else {
+        setLocationHelperMessage(
+          language === "nl"
+            ? "expo-location niet beschikbaar. Kies handmatig een locatie op de kaart."
+            : "expo-location unavailable. Select a location manually on the map."
+        );
+      }
+      setMapRegion(nextRegion);
+      setSelectedLocation(
+        (prev) =>
+          prev ?? {
+            latitude: nextRegion.latitude,
+            longitude: nextRegion.longitude,
+          }
+      );
+    } catch (err) {
+      setMapRegion(DEFAULT_REGION);
+      setSelectedLocation(null);
+      console.log("Locatie ophalen mislukt:", err);
+      setLocationHelperMessage(
+        language === "nl"
+          ? "Locatie ophalen mislukt."
+          : "Failed to fetch location."
+      );
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+  const confirmLocationSelection = () => {
+    setLocationModalVisible(false);
+    setLocationHelperMessage(null);
+    setLocationLoading(false);
+  };
+  const clearLocationSelection = () => {
+    setSelectedLocation(null);
+    setMapRegion(DEFAULT_REGION);
+    setLocationHelperMessage(null);
+    setLocationLoading(false);
+  };
+  const updateSelectedLocation = (coord: LatLng) => {
+    setSelectedLocation(coord);
+    setMapRegion((prev) =>
+      prev
+        ? { ...prev, latitude: coord.latitude, longitude: coord.longitude }
+        : {
+            ...DEFAULT_REGION,
+            latitude: coord.latitude,
+            longitude: coord.longitude,
+          }
+    );
+  };
+  const mapFocus = (selectedLocation ?? mapRegion ?? DEFAULT_REGION) as LatLng &
+    Partial<Region>;
+  const activeMarker = (selectedLocation ?? mapRegion) as
+    | (LatLng & Partial<Region>)
+    | null;
+  const cameraCenter: [number, number] = [
+    mapFocus.longitude,
+    mapFocus.latitude,
+  ];
+  const cameraZoom =
+    regionToZoomLevel(mapRegion) ??
+    (selectedLocation ? SELECTED_CAMERA_ZOOM : DEFAULT_CAMERA_ZOOM);
+
+  const handleMapPress = (event: any) => {
+    const coords = extractLonLatFromEvent(event);
+    if (coords) {
+      updateSelectedLocation(coords);
+    }
+  };
+
+  const handleMarkerDragEnd = (event: any) => {
+    const coords = extractLonLatFromEvent(event);
+    if (coords) {
+      updateSelectedLocation(coords);
+    }
   };
 
   // Notification handler setup (Expo Notifications)
@@ -1096,6 +1330,27 @@ const List: React.FC<Props> = ({
             >
               <Text style={{ color: "#fff" }}>⏰</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              onPress={openLocationPicker}
+              accessibilityLabel={
+                language === "nl" ? "Locatie instellen" : "Set location"
+              }
+              accessibilityHint={
+                language === "nl"
+                  ? "Open de kaart om een locatie te kiezen."
+                  : "Open the map to choose a location."
+              }
+              style={{
+                marginLeft: 5,
+                padding: 10,
+                backgroundColor: "#6c757d",
+                borderRadius: 8,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: "#fff" }}>📍</Text>
+            </TouchableOpacity>
 
             {/* Add knop */}
             <TouchableOpacity
@@ -1125,7 +1380,6 @@ const List: React.FC<Props> = ({
               />
             )}
           </View>
-
           {/* Native datepicker */}
           {showDatePicker && Platform.OS !== "web" && (
             <DateTimePicker
@@ -1137,6 +1391,172 @@ const List: React.FC<Props> = ({
                 if (date) setSelectedDate(date);
               }}
             />
+          )}
+
+          {showSubtaskDatePicker && Platform.OS !== "web" && (
+            <DateTimePicker
+              value={subtaskDate || new Date()}
+              mode="date"
+              display="default"
+              onChange={(event: DateTimePickerEvent, date?: Date) => {
+                setShowSubtaskDatePicker(false);
+                if (date) setSubtaskDate(date);
+              }}
+            />
+          )}
+
+          {showSubtaskTimePicker && Platform.OS !== "web" && (
+            <DateTimePicker
+              value={subtaskTime || new Date()}
+              mode="time"
+              display="default"
+              onChange={(event: DateTimePickerEvent, time?: Date) => {
+                setShowSubtaskTimePicker(false);
+                if (time) setSubtaskTime(time);
+              }}
+            />
+          )}
+
+          {locationModalVisible && (
+            <Modal
+              transparent
+              animationType="slide"
+              visible={locationModalVisible}
+              onRequestClose={confirmLocationSelection}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: "rgba(0,0,0,0.5)",
+                  justifyContent: "center",
+                }}
+              >
+                <View
+                  style={{
+                    margin: 20,
+                    backgroundColor: colors.formBackground,
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    flex: 0.7,
+                  }}
+                >
+                  {locationHelperMessage && (
+                    <View
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        backgroundColor: colors.warningBackground,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.warningText,
+                          fontWeight: "500",
+                          flex: 1,
+                        }}
+                      >
+                        {locationHelperMessage}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={dismissLocationHelperMessage}
+                        style={{ paddingLeft: 12 }}
+                      >
+                        <Ionicons
+                          name="close"
+                          size={20}
+                          color={colors.warningText}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <MapLibreGL.MapView
+                      style={{ flex: 1 }}
+                      mapStyle={MAPLIBRE_STYLE_URL}
+                      logoEnabled={false}
+                      compassEnabled
+                      onPress={handleMapPress}
+                    >
+                      <MapLibreGL.Camera
+                        centerCoordinate={cameraCenter}
+                        zoomLevel={cameraZoom}
+                        animationMode="easeTo"
+                        animationDuration={500}
+                      />
+                      {activeMarker && (
+                        <MapLibreGL.PointAnnotation
+                          id="selected-location"
+                          coordinate={[
+                            activeMarker.longitude,
+                            activeMarker.latitude,
+                          ]}
+                          draggable
+                          onDragEnd={handleMarkerDragEnd}
+                        />
+                      )}
+                    </MapLibreGL.MapView>
+                    {locationLoading && (
+                      <View
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          backgroundColor: "rgba(0,0,0,0.1)",
+                          justifyContent: "center",
+                          alignItems: "center",
+                        }}
+                      >
+                        <ActivityIndicator
+                          size="large"
+                          color={colors.addButton}
+                        />
+                        <Text
+                          style={{
+                            marginTop: 12,
+                            color: colors.text,
+                            fontWeight: "500",
+                          }}
+                        >
+                          {language === "nl"
+                            ? "Locatie ophalen..."
+                            : "Fetching location..."}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      padding: 12,
+                    }}
+                  >
+                    <TouchableOpacity onPress={clearLocationSelection}>
+                      <Text
+                        style={{
+                          color: colors.deleteButton,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {language === "nl" ? "Verwijder" : "Clear"}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={confirmLocationSelection}>
+                      <Text
+                        style={{ color: colors.addButton, fontWeight: "600" }}
+                      >
+                        {language === "nl" ? "Bevestigen" : "Confirm"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </Modal>
           )}
 
           {/* Lijst met actieve taken (gesorteerd op priority + createdAt) */}
@@ -1202,8 +1622,8 @@ const List: React.FC<Props> = ({
                                   item.priority === "high"
                                     ? "#ff6b6b"
                                     : item.priority === "medium"
-                                    ? "#ffb366"
-                                    : "#6bc66b",
+                                      ? "#ffb366"
+                                      : "#6bc66b",
                                 fontWeight: "700",
                                 marginBottom: 4,
                               }}
@@ -1260,6 +1680,19 @@ const List: React.FC<Props> = ({
                               }}
                             />
                           )}
+                          {item.location && (
+                            <Text
+                              style={{
+                                fontSize: 12,
+                                color: "#6c757d",
+                                marginTop: 4,
+                              }}
+                            >
+                              {language === "nl" ? "Locatie" : "Location"}:{" "}
+                              {item.location.latitude.toFixed(4)},{" "}
+                              {item.location.longitude.toFixed(4)}
+                            </Text>
+                          )}
                           {/* Knoppen om afbeelding toe te voegen (camera / galerij) */}
                           <TouchableOpacity
                             onPress={() => pickImage(false, originalIndex)}
@@ -1310,187 +1743,188 @@ const List: React.FC<Props> = ({
                       </View>
 
                       {/* Subtasks rendering */}
-                      {buildSubtaskDisplay(item.subtasks).map(
-                        ({ sub, originalIndex: subIndex }) => {
-                          // Toon wanneer subtask toegevoegd is (in sub-UI)
-                          const subAddedText = sub.createdAt
-                            ? `${
-                                (translations[language] as any).added ??
-                                (language === "nl" ? "Toegevoegd" : "Added")
-                              }: ${formatDate(sub.createdAt)}`
-                            : null;
-                          const subDeadlineDate = sub.deadline
-                            ? new Date(sub.deadline)
-                            : null;
-                          const isSubSameDay =
-                            subDeadlineDate &&
-                            subDeadlineDate.getDate() === today.getDate() &&
-                            subDeadlineDate.getMonth() === today.getMonth() &&
-                            subDeadlineDate.getFullYear() ===
-                              today.getFullYear();
+                      {React.Children.toArray(
+                        buildSubtaskDisplay(item.subtasks).map(
+                          ({ sub, originalIndex: subIndex }) => {
+                            // Toon wanneer subtask toegevoegd is (in sub-UI)
+                            const subAddedText = sub.createdAt
+                              ? `${
+                                  (translations[language] as any).added ??
+                                  (language === "nl" ? "Toegevoegd" : "Added")
+                                }: ${formatDate(sub.createdAt)}`
+                              : null;
+                            const subDeadlineDate = sub.deadline
+                              ? new Date(sub.deadline)
+                              : null;
+                            const isSubSameDay =
+                              subDeadlineDate &&
+                              subDeadlineDate.getDate() === today.getDate() &&
+                              subDeadlineDate.getMonth() === today.getMonth() &&
+                              subDeadlineDate.getFullYear() ===
+                                today.getFullYear();
 
-                          const subDeadlinePassed =
-                            subDeadlineDate &&
-                            (subDeadlineDate < today || isSubSameDay);
+                            const subDeadlinePassed =
+                              subDeadlineDate &&
+                              (subDeadlineDate < today || isSubSameDay);
 
-                          return (
-                            <View
-                              key={subIndex}
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                marginLeft: 25,
-                                marginBottom: 5,
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <TouchableOpacity
-                                onPress={() =>
-                                  toggleSubtask(originalIndex, subIndex)
-                                }
-                                style={{ marginRight: 10 }}
+                            return (
+                              <View
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  marginLeft: 25,
+                                  marginBottom: 5,
+                                  flexWrap: "wrap",
+                                }}
                               >
-                                <Ionicons
-                                  name={
-                                    sub.done
-                                      ? "checkmark-circle"
-                                      : "ellipse-outline"
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    toggleSubtask(originalIndex, subIndex)
                                   }
-                                  size={20}
-                                  color={sub.done ? "#28a745" : "#6c757d"}
-                                />
-                              </TouchableOpacity>
-                              <View style={{ flex: 1 }}>
-                                {sub.priority && (
-                                  <Text
-                                    style={{
-                                      fontSize: 12,
-                                      color: priorityColor(sub.priority),
-                                      fontWeight: "700",
-                                      marginBottom: 2,
-                                    }}
-                                  >
-                                    {sub.priority.toUpperCase()}
-                                  </Text>
-                                )}
-                                <Text
-                                  style={{
-                                    color: colors.text,
-                                    fontSize: 16,
-                                    textDecorationLine: sub.done
-                                      ? "line-through"
-                                      : "none",
-                                  }}
+                                  style={{ marginRight: 10 }}
                                 >
-                                  {sub.text}
-                                </Text>
-                                {/* Toon wanneer subtask toegevoegd is */}
-                                {sub.createdAt && (
-                                  <Text
-                                    style={{
-                                      fontSize: 12,
-                                      color: "#6c757d",
-                                      marginTop: 2,
-                                    }}
-                                  >
-                                    {(translations[language] as any).added ??
-                                      (language === "nl"
-                                        ? "Toegevoegd"
-                                        : "Added")}
-                                    : {formatDate(sub.createdAt)}
-                                  </Text>
-                                )}
-                                {/* Deadline rood als verlopen/bijna verlopen, anders grijs */}
-                                {sub.deadline && (
-                                  <Text
-                                    style={{
-                                      fontSize: 12,
-                                      color:
-                                        sub.deadline &&
-                                        new Date(sub.deadline) < new Date()
-                                          ? "red"
-                                          : "#6c757d",
-                                      marginTop: 2,
-                                    }}
-                                  >
-                                    {translations[language].deadline}:{" "}
-                                    {formatDate(sub.deadline)}
-                                  </Text>
-                                )}
-                                {sub.image && (
-                                  <Image
-                                    source={{ uri: sub.image }}
-                                    style={{
-                                      width: 80,
-                                      height: 80,
-                                      marginTop: 5,
-                                      borderRadius: 8,
-                                    }}
+                                  <Ionicons
+                                    name={
+                                      sub.done
+                                        ? "checkmark-circle"
+                                        : "ellipse-outline"
+                                    }
+                                    size={20}
+                                    color={sub.done ? "#28a745" : "#6c757d"}
                                   />
-                                )}
-                                {/* Zet de knoppen onder elkaar */}
-                                <View
-                                  style={{
-                                    flexDirection: "column",
-                                    marginTop: 5,
-                                  }}
-                                >
-                                  <TouchableOpacity
-                                    onPress={() =>
-                                      pickImage(true, originalIndex, subIndex)
-                                    }
-                                  >
-                                    <Text style={{ color: colors.addButton }}>
-                                      📷 {translations[language].addPhoto}
+                                </TouchableOpacity>
+                                <View style={{ flex: 1 }}>
+                                  {sub.priority && (
+                                    <Text
+                                      style={{
+                                        fontSize: 12,
+                                        color: priorityColor(sub.priority),
+                                        fontWeight: "700",
+                                        marginBottom: 2,
+                                      }}
+                                    >
+                                      {sub.priority.toUpperCase()}
                                     </Text>
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    onPress={() =>
-                                      pickImage(
-                                        true,
-                                        originalIndex,
-                                        subIndex,
-                                        true,
-                                        true
-                                      )
-                                    }
-                                    style={{ marginTop: 5 }}
+                                  )}
+                                  <Text
+                                    style={{
+                                      color: colors.text,
+                                      fontSize: 16,
+                                      textDecorationLine: sub.done
+                                        ? "line-through"
+                                        : "none",
+                                    }}
                                   >
-                                    <Text style={{ color: colors.addButton }}>
-                                      🖼️{" "}
-                                      {translations[language].pickFromGallery}
+                                    {sub.text}
+                                  </Text>
+                                  {/* Toon wanneer subtask toegevoegd is */}
+                                  {sub.createdAt && (
+                                    <Text
+                                      style={{
+                                        fontSize: 12,
+                                        color: "#6c757d",
+                                        marginTop: 2,
+                                      }}
+                                    >
+                                      {(translations[language] as any).added ??
+                                        (language === "nl"
+                                          ? "Toegevoegd"
+                                          : "Added")}
+                                      : {formatDate(sub.createdAt)}
                                     </Text>
-                                  </TouchableOpacity>
+                                  )}
+                                  {/* Deadline rood als verlopen/bijna verlopen, anders grijs */}
+                                  {sub.deadline && (
+                                    <Text
+                                      style={{
+                                        fontSize: 12,
+                                        color:
+                                          sub.deadline &&
+                                          new Date(sub.deadline) < new Date()
+                                            ? "red"
+                                            : "#6c757d",
+                                        marginTop: 2,
+                                      }}
+                                    >
+                                      {translations[language].deadline}:{" "}
+                                      {formatDate(sub.deadline)}
+                                    </Text>
+                                  )}
+                                  {sub.image && (
+                                    <Image
+                                      source={{ uri: sub.image }}
+                                      style={{
+                                        width: 80,
+                                        height: 80,
+                                        marginTop: 5,
+                                        borderRadius: 8,
+                                      }}
+                                    />
+                                  )}
+                                  {/* Zet de knoppen onder elkaar */}
+                                  <View
+                                    style={{
+                                      flexDirection: "column",
+                                      marginTop: 5,
+                                    }}
+                                  >
+                                    <TouchableOpacity
+                                      onPress={() =>
+                                        pickImage(true, originalIndex, subIndex)
+                                      }
+                                    >
+                                      <Text style={{ color: colors.addButton }}>
+                                        📷 {translations[language].addPhoto}
+                                      </Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      onPress={() =>
+                                        pickImage(
+                                          true,
+                                          originalIndex,
+                                          subIndex,
+                                          true,
+                                          true
+                                        )
+                                      }
+                                      style={{ marginTop: 5 }}
+                                    >
+                                      <Text style={{ color: colors.addButton }}>
+                                        🖼️{" "}
+                                        {translations[language].pickFromGallery}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  </View>
                                 </View>
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    confirmDelete(
+                                      translations[language].confirmDelete,
+                                      translations[language].deleteSubtask,
+                                      () => {
+                                        const updatedTodos = [...todos];
+                                        updatedTodos[originalIndex].subtasks =
+                                          updatedTodos[
+                                            originalIndex
+                                          ].subtasks.filter(
+                                            (_, i) => i !== subIndex
+                                          );
+                                        saveAll(updatedTodos, archivedTodos);
+                                      }
+                                    )
+                                  }
+                                  style={{ marginLeft: 10 }}
+                                >
+                                  <Ionicons
+                                    name="trash"
+                                    size={20}
+                                    color={colors.deleteButton}
+                                  />
+                                </TouchableOpacity>
                               </View>
-                              <TouchableOpacity
-                                onPress={() =>
-                                  confirmDelete(
-                                    translations[language].confirmDelete,
-                                    translations[language].deleteSubtask,
-                                    () => {
-                                      const updatedTodos = [...todos];
-                                      updatedTodos[originalIndex].subtasks =
-                                        updatedTodos[
-                                          originalIndex
-                                        ].subtasks.filter(
-                                          (_, i) => i !== subIndex
-                                        );
-                                      saveAll(updatedTodos, archivedTodos);
-                                    }
-                                  )
-                                }
-                                style={{ marginLeft: 10 }}
-                              >
-                                <Ionicons
-                                  name="trash"
-                                  size={20}
-                                  color={colors.deleteButton}
-                                />
-                              </TouchableOpacity>
-                            </View>
-                          );
-                        }
+                            );
+                          }
+                        )
                       )}
 
                       <TouchableOpacity
@@ -1689,8 +2123,8 @@ const List: React.FC<Props> = ({
                                     item.priority === "high"
                                       ? "#ff6b6b"
                                       : item.priority === "medium"
-                                      ? "#ffb366"
-                                      : "#6bc66b",
+                                        ? "#ffb366"
+                                        : "#6bc66b",
                                   fontWeight: "700",
                                   marginBottom: 4,
                                 }}
@@ -1833,184 +2267,186 @@ const List: React.FC<Props> = ({
                         </View>
 
                         {/* Subtasks in archief */}
-                        {item.subtasks.map((sub, subIndex) => {
-                          const subAddedText = sub.createdAt
-                            ? `${
-                                (translations[language] as any).added ??
-                                (language === "nl" ? "Toegevoegd" : "Added")
-                              }: ${formatDate(sub.createdAt)}`
-                            : null;
-                          const subDeadlinePassed =
-                            sub.deadline && new Date(sub.deadline) < new Date();
-                          return (
-                            <View
-                              key={subIndex}
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                marginLeft: 25,
-                                marginBottom: 5,
-                                flexWrap: "wrap", // voeg flexWrap toe voor consistentie
-                              }}
-                            >
-                              <TouchableOpacity
-                                onPress={() => {
-                                  const updatedArchived = [...archivedTodos];
-                                  updatedArchived[
-                                    originalArchiveIndex
-                                  ].subtasks[subIndex].done =
-                                    !updatedArchived[originalArchiveIndex]
-                                      .subtasks[subIndex].done;
-                                  saveAll(todos, updatedArchived);
+                        {React.Children.toArray(
+                          item.subtasks.map((sub, subIndex) => {
+                            const subAddedText = sub.createdAt
+                              ? `${
+                                  (translations[language] as any).added ??
+                                  (language === "nl" ? "Toegevoegd" : "Added")
+                                }: ${formatDate(sub.createdAt)}`
+                              : null;
+                            const subDeadlinePassed =
+                              sub.deadline &&
+                              new Date(sub.deadline) < new Date();
+                            return (
+                              <View
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  marginLeft: 25,
+                                  marginBottom: 5,
+                                  flexWrap: "wrap", // voeg flexWrap toe voor consistentie
                                 }}
-                                style={{ marginRight: 10 }}
                               >
-                                <Ionicons
-                                  name={
-                                    sub.done
-                                      ? "checkmark-circle"
-                                      : "ellipse-outline"
-                                  }
-                                  size={20}
-                                  color={sub.done ? "#28a745" : "#6c757d"}
-                                />
-                              </TouchableOpacity>
-                              <View style={{ flex: 1 }}>
-                                {sub.priority && (
-                                  <Text
-                                    style={{
-                                      fontSize: 12,
-                                      color: priorityColor(sub.priority),
-                                      fontWeight: "700",
-                                      marginBottom: 2,
-                                    }}
-                                  >
-                                    {sub.priority.toUpperCase()}
-                                  </Text>
-                                )}
-                                <Text
-                                  style={{
-                                    color: colors.text,
-                                    fontSize: 16,
-                                    textDecorationLine: sub.done
-                                      ? "line-through"
-                                      : "none",
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    const updatedArchived = [...archivedTodos];
+                                    updatedArchived[
+                                      originalArchiveIndex
+                                    ].subtasks[subIndex].done =
+                                      !updatedArchived[originalArchiveIndex]
+                                        .subtasks[subIndex].done;
+                                    saveAll(todos, updatedArchived);
                                   }}
+                                  style={{ marginRight: 10 }}
                                 >
-                                  {sub.text}
-                                </Text>
-                                {/* Toegevoegd grijs, onder naam */}
-                                {sub.createdAt && (
-                                  <Text
-                                    style={{
-                                      fontSize: 12,
-                                      color: "#6c757d",
-                                      marginTop: 2,
-                                    }}
-                                  >
-                                    {(translations[language] as any).added ??
-                                      (language === "nl"
-                                        ? "Toegevoegd"
-                                        : "Added")}
-                                    : {formatDate(sub.createdAt)}
-                                  </Text>
-                                )}
-                                {/* Deadline onder toegevoegd, rood als verlopen/bijna verlopen, anders grijs */}
-                                {sub.deadline && (
-                                  <Text
-                                    style={{
-                                      fontSize: 12,
-                                      color:
-                                        new Date(sub.deadline) < new Date()
-                                          ? "red"
-                                          : "#6c757d",
-                                      marginTop: 2,
-                                    }}
-                                  >
-                                    {translations[language].deadline}:{" "}
-                                    {formatDate(sub.deadline)}
-                                  </Text>
-                                )}
-                                {sub.image && (
-                                  <Image
-                                    source={{ uri: sub.image }}
-                                    style={{
-                                      width: 80,
-                                      height: 80,
-                                      marginTop: 5,
-                                      borderRadius: 8,
-                                    }}
+                                  <Ionicons
+                                    name={
+                                      sub.done
+                                        ? "checkmark-circle"
+                                        : "ellipse-outline"
+                                    }
+                                    size={20}
+                                    color={sub.done ? "#28a745" : "#6c757d"}
                                   />
-                                )}
-                                {/* Zet de knoppen onder elkaar */}
-                                <View
-                                  style={{
-                                    flexDirection: "column",
-                                    marginTop: 5,
-                                  }}
-                                >
-                                  <TouchableOpacity
-                                    onPress={() =>
-                                      pickImage(
-                                        true,
-                                        originalArchiveIndex,
-                                        subIndex,
-                                        true
-                                      )
-                                    }
-                                  >
-                                    <Text style={{ color: colors.addButton }}>
-                                      📷 {translations[language].addPhoto}
+                                </TouchableOpacity>
+                                <View style={{ flex: 1 }}>
+                                  {sub.priority && (
+                                    <Text
+                                      style={{
+                                        fontSize: 12,
+                                        color: priorityColor(sub.priority),
+                                        fontWeight: "700",
+                                        marginBottom: 2,
+                                      }}
+                                    >
+                                      {sub.priority.toUpperCase()}
                                     </Text>
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    onPress={() =>
-                                      pickImage(
-                                        true,
-                                        originalArchiveIndex,
-                                        subIndex,
-                                        true,
-                                        true
-                                      )
-                                    }
-                                    style={{ marginTop: 5 }}
+                                  )}
+                                  <Text
+                                    style={{
+                                      color: colors.text,
+                                      fontSize: 16,
+                                      textDecorationLine: sub.done
+                                        ? "line-through"
+                                        : "none",
+                                    }}
                                   >
-                                    <Text style={{ color: colors.addButton }}>
-                                      🖼️{" "}
-                                      {translations[language].pickFromGallery}
+                                    {sub.text}
+                                  </Text>
+                                  {/* Toegevoegd grijs, onder naam */}
+                                  {sub.createdAt && (
+                                    <Text
+                                      style={{
+                                        fontSize: 12,
+                                        color: "#6c757d",
+                                        marginTop: 2,
+                                      }}
+                                    >
+                                      {(translations[language] as any).added ??
+                                        (language === "nl"
+                                          ? "Toegevoegd"
+                                          : "Added")}
+                                      : {formatDate(sub.createdAt)}
                                     </Text>
-                                  </TouchableOpacity>
+                                  )}
+                                  {/* Deadline onder toegevoegd, rood als verlopen/bijna verlopen, anders grijs */}
+                                  {sub.deadline && (
+                                    <Text
+                                      style={{
+                                        fontSize: 12,
+                                        color:
+                                          new Date(sub.deadline) < new Date()
+                                            ? "red"
+                                            : "#6c757d",
+                                        marginTop: 2,
+                                      }}
+                                    >
+                                      {translations[language].deadline}:{" "}
+                                      {formatDate(sub.deadline)}
+                                    </Text>
+                                  )}
+                                  {sub.image && (
+                                    <Image
+                                      source={{ uri: sub.image }}
+                                      style={{
+                                        width: 80,
+                                        height: 80,
+                                        marginTop: 5,
+                                        borderRadius: 8,
+                                      }}
+                                    />
+                                  )}
+                                  {/* Zet de knoppen onder elkaar */}
+                                  <View
+                                    style={{
+                                      flexDirection: "column",
+                                      marginTop: 5,
+                                    }}
+                                  >
+                                    <TouchableOpacity
+                                      onPress={() =>
+                                        pickImage(
+                                          true,
+                                          originalArchiveIndex,
+                                          subIndex,
+                                          true
+                                        )
+                                      }
+                                    >
+                                      <Text style={{ color: colors.addButton }}>
+                                        📷 {translations[language].addPhoto}
+                                      </Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      onPress={() =>
+                                        pickImage(
+                                          true,
+                                          originalArchiveIndex,
+                                          subIndex,
+                                          true,
+                                          true
+                                        )
+                                      }
+                                      style={{ marginTop: 5 }}
+                                    >
+                                      <Text style={{ color: colors.addButton }}>
+                                        🖼️{" "}
+                                        {translations[language].pickFromGallery}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  </View>
                                 </View>
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    confirmDelete(
+                                      translations[language].confirmDelete,
+                                      translations[language].deleteSubtask,
+                                      () => {
+                                        const updatedTodos = [...todos];
+                                        updatedTodos[
+                                          originalArchiveIndex
+                                        ].subtasks = updatedTodos[
+                                          originalArchiveIndex
+                                        ].subtasks.filter(
+                                          (_, i) => i !== subIndex
+                                        );
+                                        saveAll(updatedTodos, archivedTodos);
+                                      }
+                                    )
+                                  }
+                                  style={{ marginLeft: 10 }}
+                                >
+                                  <Ionicons
+                                    name="trash"
+                                    size={20}
+                                    color={colors.deleteButton}
+                                  />
+                                </TouchableOpacity>
                               </View>
-                              <TouchableOpacity
-                                onPress={() =>
-                                  confirmDelete(
-                                    translations[language].confirmDelete,
-                                    translations[language].deleteSubtask,
-                                    () => {
-                                      const updatedTodos = [...todos];
-                                      updatedTodos[
-                                        originalArchiveIndex
-                                      ].subtasks = updatedTodos[
-                                        originalArchiveIndex
-                                      ].subtasks.filter(
-                                        (_, i) => i !== subIndex
-                                      );
-                                      saveAll(updatedTodos, archivedTodos);
-                                    }
-                                  )
-                                }
-                                style={{ marginLeft: 10 }}
-                              >
-                                <Ionicons
-                                  name="trash"
-                                  size={20}
-                                  color={colors.deleteButton}
-                                />
-                              </TouchableOpacity>
-                            </View>
-                          );
-                        })}
+                            );
+                          })
+                        )}
                       </View>
                     </View>
                   );

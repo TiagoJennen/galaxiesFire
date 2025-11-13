@@ -1,15 +1,27 @@
 import React, { useEffect, useState } from "react";
 import { useColorScheme } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import {
+  createNativeStackNavigator,
+  NativeStackScreenProps,
+} from "@react-navigation/native-stack";
 import Login from "./app/screens/Login";
 import List from "./app/screens/List";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { FIREBASE_AUTH } from "./FirebaseConfig";
 import { StatusBar } from "expo-status-bar";
 
-const Stack = createNativeStackNavigator();
-const InsideStack = createNativeStackNavigator();
+type RootStackParamList = {
+  Inside: undefined;
+  Login: undefined;
+};
+
+type InsideStackParamList = {
+  ToDoList: undefined;
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
+const InsideStack = createNativeStackNavigator<InsideStackParamList>();
 
 interface ThemeProps {
   theme: "light" | "dark";
@@ -24,26 +36,31 @@ function InsideLayout({
   language,
   toggleLanguage,
 }: ThemeProps) {
-  // Inside navigatie met thema + taal
+  const ToDoListScreen: React.FC<
+    NativeStackScreenProps<InsideStackParamList, "ToDoList">
+  > = () => (
+    <List
+      theme={theme}
+      toggleTheme={toggleTheme}
+      language={language}
+      toggleLanguage={toggleLanguage}
+    />
+  );
+
   return (
     <InsideStack.Navigator
       screenOptions={{
         headerStyle: { backgroundColor: theme === "light" ? "#fff" : "#000" },
         headerTintColor: theme === "light" ? "#000" : "#fff",
       }}
-    >
-      <InsideStack.Screen name="To-Do List">
-        {(props) => (
-          <List
-            {...props}
-            theme={theme}
-            toggleTheme={toggleTheme}
-            language={language}
-            toggleLanguage={toggleLanguage}
-          />
-        )}
-      </InsideStack.Screen>
-    </InsideStack.Navigator>
+      children={
+        <InsideStack.Screen
+          name="ToDoList"
+          component={ToDoListScreen}
+          options={{ title: "To-Do List" }}
+        />
+      }
+    />
   );
 }
 
@@ -70,45 +87,58 @@ export default function App() {
 
   if (loading) return null;
 
+  const InsideScreen: React.FC<
+    NativeStackScreenProps<RootStackParamList, "Inside">
+  > = () => (
+    <InsideLayout
+      theme={theme}
+      toggleTheme={toggleTheme}
+      language={language}
+      toggleLanguage={toggleLanguage}
+    />
+  );
+
+  const LoginScreen: React.FC<
+    NativeStackScreenProps<RootStackParamList, "Login">
+  > = () => (
+    <Login
+      theme={theme}
+      toggleTheme={toggleTheme}
+      language={language}
+      toggleLanguage={toggleLanguage}
+    />
+  );
+
   return (
     <>
       <StatusBar style={theme === "light" ? "dark" : "light"} hidden={false} />
-      <NavigationContainer>
-        <Stack.Navigator
-          screenOptions={{
-            headerStyle: {
-              backgroundColor: theme === "light" ? "#fff" : "#000",
-            },
-            headerTintColor: theme === "light" ? "#000" : "#fff",
-          }}
-        >
-          {user ? (
-            <Stack.Screen name="Inside" options={{ headerShown: false }}>
-              {(props) => (
-                <InsideLayout
-                  {...props}
-                  theme={theme}
-                  toggleTheme={toggleTheme}
-                  language={language}
-                  toggleLanguage={toggleLanguage}
+      <NavigationContainer
+        children={
+          <Stack.Navigator
+            screenOptions={{
+              headerStyle: {
+                backgroundColor: theme === "light" ? "#fff" : "#000",
+              },
+              headerTintColor: theme === "light" ? "#000" : "#fff",
+            }}
+            children={
+              user ? (
+                <Stack.Screen
+                  name="Inside"
+                  component={InsideScreen}
+                  options={{ headerShown: false }}
                 />
-              )}
-            </Stack.Screen>
-          ) : (
-            <Stack.Screen name="Login" options={{ headerShown: false }}>
-              {(props) => (
-                <Login
-                  {...props}
-                  theme={theme}
-                  toggleTheme={toggleTheme}
-                  language={language}
-                  toggleLanguage={toggleLanguage}
+              ) : (
+                <Stack.Screen
+                  name="Login"
+                  component={LoginScreen}
+                  options={{ headerShown: false }}
                 />
-              )}
-            </Stack.Screen>
-          )}
-        </Stack.Navigator>
-      </NavigationContainer>
+              )
+            }
+          />
+        }
+      />
     </>
   );
 }

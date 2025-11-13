@@ -28,17 +28,25 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "foregroundService": {
+        "notificationTitle": "GalaxyFire draait op de achtergrond",
+        "notificationText": "We volgen je locatie voor taakherinneringen.",
+        "foregroundServiceType": "location"
+      },
       "edgeToEdgeEnabled": true,
       "package": "com.anonymous.galaxiesFire",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION"
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": ["@maplibre/maplibre-react-native"],
     "extra": {
       "eas": {
         "projectId": "3fe5f229-24c7-4b14-9b97-8286c3064ede"
