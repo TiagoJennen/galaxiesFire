@@ -8,8 +8,6 @@ import {
   Alert,
   Image,
   Platform,
-  Modal,
-  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, {
@@ -18,12 +16,12 @@ import DateTimePicker, {
 import { FIREBASE_AUTH } from "../../FirebaseConfig";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 import { translations } from "../../translations";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import { useNavigation, CommonActions } from "@react-navigation/native";
 import MapLibreGL, { Logger } from "@maplibre/maplibre-react-native";
+
 import { Region } from "react-native-maps";
 import * as Location from "expo-location";
 import {
@@ -31,123 +29,64 @@ import {
   syncGeofenceTargets,
   clearGeofenceTaskState,
 } from "../background/geofenceTask";
-
-const DEFAULT_REGION: Region = {
-  latitude: 52.3702,
-  longitude: 4.8952,
-  latitudeDelta: 0.05,
-  longitudeDelta: 0.05,
-};
-
-const MAPLIBRE_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
-const DEFAULT_CAMERA_ZOOM = 12;
-const SELECTED_CAMERA_ZOOM = 14;
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
-
-const regionToZoomLevel = (region?: Region | null) => {
-  if (!region || !region.latitudeDelta) return null;
-  const zoomApprox = Math.log2(360 / region.latitudeDelta);
-  return clamp(zoomApprox, 3, 18);
-};
-
-const extractLonLatFromEvent = (
-  event: any
-): { latitude: number; longitude: number } | null => {
-  const candidate =
-    event?.geometry?.coordinates ??
-    event?.nativeEvent?.geometry?.coordinates ??
-    (Array.isArray(event?.features) &&
-      event.features[0]?.geometry?.coordinates);
-  if (!Array.isArray(candidate) || candidate.length < 2) return null;
-  const [longitude, latitude] = candidate;
-  if (typeof longitude !== "number" || typeof latitude !== "number") {
-    return null;
-  }
-  return { latitude, longitude };
-};
-
-/*
-  Interfaces voor taken en subtaken.
-  - SubTodo: tekst, status (done), optioneel deadline en afbeelding.
-  - Todo: zelfde als SubTodo maar bevat een lijst met subtasks.
-*/
-
-interface SubTodo {
-  text: string;
-  done: boolean;
-  deadline?: string | null;
-  image?: string | null;
-  createdAt?: string | null;
-  priority?: "low" | "medium" | "high";
-}
-
-interface Todo {
-  text: string;
-  done: boolean;
-  deadline?: string | null;
-  subtasks: SubTodo[];
-  image?: string | null;
-  createdAt?: string | null;
-  priority?: "low" | "medium" | "high";
-  location?: LatLng | null;
-}
-
-type LatLng = { latitude: number; longitude: number };
-type ListSource = "active" | "archive";
+import {
+  ListSource,
+  ListScreenProps,
+  LatLng,
+  Todo,
+  SubTodo,
+} from "./list/types";
+import { buildThemeColors } from "./list/theme";
+import {
+  DEFAULT_REGION,
+  MAPLIBRE_STYLE_URL,
+  DEFAULT_CAMERA_ZOOM,
+  SELECTED_CAMERA_ZOOM,
+  regionToZoomLevel,
+  extractLonLatFromEvent,
+} from "./list/map";
+import { saveTodosFirebase, loadTodosFirebase } from "./list/storage";
+import LocationModal from "./list/components/LocationModal";
+import SubtaskEditorModal from "./list/components/SubtaskEditorModal";
+import TaskEditorModal from "./list/components/TaskEditorModal";
 
 // Onthoud de laatst gekozen lijstweergave zodat toggles (zoals thema) het niet resetten.
 let lastShowArchive = false;
 
-/*
-  Props die de List component verwacht:
-  - theme: light | dark
-  - toggleTheme: functie om thema te wisselen
-  - language: 'nl' | 'en'
-  - toggleLanguage: functie om taal te wisselen
-*/
-
-interface Props {
-  theme: "light" | "dark";
-  toggleTheme: () => void;
-  language: "nl" | "en";
-  toggleLanguage: () => void;
-}
-
-const FIRESTORE_DB = getFirestore();
-
 // Hoofdfunctie van het scherm: toont takenlijst, formulieren en archive
-const List: React.FC<Props> = ({
+const List: React.FC<ListScreenProps> = ({
   theme,
   toggleTheme,
   language,
   toggleLanguage,
 }) => {
-  // Lokale state hooks voor UI en data
-  // UseState om data op te slaan en te veranderen
+  const navigation = useNavigation<any>();
   const [task, setTask] = useState("");
   const [todos, setTodos] = useState<Todo[]>([]);
   const [archivedTodos, setArchivedTodos] = useState<Todo[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [subtaskText, setSubtaskText] = useState("");
-  const [subtaskDate, setSubtaskDate] = useState<Date | null>(null);
-  const [editingTodoIndex, setEditingTodoIndex] = useState<number | null>(null);
-  const [showSubtaskDatePicker, setShowSubtaskDatePicker] = useState(false);
-  const [showArchive, setShowArchive] = useState(() => lastShowArchive);
-  const [userId, setUserId] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState<Date | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [subtaskText, setSubtaskText] = useState("");
+  const [subtaskDate, setSubtaskDate] = useState<Date | null>(null);
   const [subtaskTime, setSubtaskTime] = useState<Date | null>(null);
+  const [showSubtaskDatePicker, setShowSubtaskDatePicker] = useState(false);
   const [showSubtaskTimePicker, setShowSubtaskTimePicker] = useState(false);
-  const navigation = useNavigation<any>();
+  const [editingTodoIndex, setEditingTodoIndex] = useState<number | null>(null);
+  const [showArchive, setShowArchive] = useState(() => lastShowArchive);
+  const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">(
+    "medium"
+  );
   const [newSubtaskPriority, setNewSubtaskPriority] = useState<
     "low" | "medium" | "high"
   >("medium");
-  // Sorteervolgorde: 'oldest' = eerst toegevoegd bovenaan, 'newest' = laatst toegevoegd bovenaan
   const [sortOrder, setSortOrder] = useState<"oldest" | "newest">("oldest");
+  const [prioritySort, setPrioritySort] = useState<"highToLow" | "lowToHigh">(
+    "highToLow"
+  );
   const [selectedLocation, setSelectedLocation] = useState<LatLng | null>(null);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
@@ -156,14 +95,13 @@ const List: React.FC<Props> = ({
   const [locationHelperMessage, setLocationHelperMessage] = useState<
     string | null
   >(null);
-  const dismissLocationHelperMessage = () => setLocationHelperMessage(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationSearchText, setLocationSearchText] = useState("");
   const [editingLocationTodoIndex, setEditingLocationTodoIndex] = useState<
     number | null
   >(null);
-  const toggleSortOrder = () =>
-    setSortOrder((s) => (s === "oldest" ? "newest" : "oldest"));
+  const [editingLocationSource, setEditingLocationSource] =
+    useState<ListSource>("active");
   const [taskEditorVisible, setTaskEditorVisible] = useState(false);
   const [taskEditorIndex, setTaskEditorIndex] = useState<number | null>(null);
   const [taskEditorText, setTaskEditorText] = useState("");
@@ -194,8 +132,149 @@ const List: React.FC<Props> = ({
     useState(false);
   const [subtaskEditorSource, setSubtaskEditorSource] =
     useState<ListSource>("active");
-  const [editingLocationSource, setEditingLocationSource] =
-    useState<ListSource>("active");
+
+  const colors = buildThemeColors(theme);
+
+  const toggleSortOrder = () =>
+    setSortOrder((current) => (current === "oldest" ? "newest" : "oldest"));
+  const togglePrioritySort = () =>
+    setPrioritySort((current) =>
+      current === "highToLow" ? "lowToHigh" : "highToLow"
+    );
+
+  const priorityRank = (priority?: "low" | "medium" | "high" | null) => {
+    if (priority === "high") return 2;
+    if (priority === "medium") return 1;
+    return 0;
+  };
+
+  const priorityColor = (priority?: "low" | "medium" | "high" | null) => {
+    if (priority === "high") return "#ff6b6b";
+    if (priority === "medium") return "#ffb366";
+    if (priority === "low") return "#6bc66b";
+    return "#6c757d";
+  };
+
+  const buildDisplayList = (list: Todo[]) =>
+    list
+      .map((item, originalIndex) => ({ item, originalIndex }))
+      .sort((a, b) => {
+        const priorityDiff =
+          prioritySort === "highToLow"
+            ? priorityRank(b.item.priority ?? null) -
+              priorityRank(a.item.priority ?? null)
+            : priorityRank(a.item.priority ?? null) -
+              priorityRank(b.item.priority ?? null);
+        if (priorityDiff !== 0) return priorityDiff;
+
+        const aTime = a.item.createdAt
+          ? new Date(a.item.createdAt).getTime()
+          : 0;
+        const bTime = b.item.createdAt
+          ? new Date(b.item.createdAt).getTime()
+          : 0;
+        return sortOrder === "newest" ? bTime - aTime : aTime - bTime;
+      });
+
+  const buildSubtaskDisplay = (list: SubTodo[]) =>
+    list
+      .map((sub, originalIndex) => ({ sub, originalIndex }))
+      .sort((a, b) => {
+        const priorityDiff =
+          prioritySort === "highToLow"
+            ? priorityRank(b.sub.priority ?? null) -
+              priorityRank(a.sub.priority ?? null)
+            : priorityRank(a.sub.priority ?? null) -
+              priorityRank(b.sub.priority ?? null);
+        if (priorityDiff !== 0) return priorityDiff;
+
+        const aTime = a.sub.createdAt ? new Date(a.sub.createdAt).getTime() : 0;
+        const bTime = b.sub.createdAt ? new Date(b.sub.createdAt).getTime() : 0;
+        return sortOrder === "newest" ? bTime - aTime : aTime - bTime;
+      });
+
+  const geofenceTargetsFromTodos = (list: Todo[]) =>
+    list
+      .filter((todo) => todo.location)
+      .map((todo) => ({
+        id: `${todo.createdAt ?? todo.text}-${todo.location?.latitude ?? 0}-${
+          todo.location?.longitude ?? 0
+        }`,
+        title: todo.text,
+        latitude: todo.location!.latitude,
+        longitude: todo.location!.longitude,
+      }));
+
+  const formatDate = (value?: string | null) => {
+    if (!value) return "";
+    const date = new Date(value);
+    return date.toLocaleString(language === "nl" ? "nl-NL" : "en-US", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, async (user) => {
+      try {
+        if (user) {
+          setUserId(user.uid);
+          await AsyncStorage.setItem("current_user_id", user.uid);
+          try {
+            const savedTodos = await AsyncStorage.getItem(`todos_${user.uid}`);
+            if (savedTodos) {
+              setTodos(JSON.parse(savedTodos));
+            }
+            const savedArchive = await AsyncStorage.getItem(
+              `archive_${user.uid}`
+            );
+            if (savedArchive) {
+              setArchivedTodos(JSON.parse(savedArchive));
+            }
+          } catch (storageError) {
+            console.log("Failed to read cached todos:", storageError);
+          }
+
+          const remote = await loadTodosFirebase(user.uid);
+          setTodos(remote.todos);
+          setArchivedTodos(remote.archive);
+
+          if (Platform.OS !== "web") {
+            try {
+              await initializeGeofenceTask();
+              await syncGeofenceTargets(
+                user.uid,
+                geofenceTargetsFromTodos(remote.todos)
+              );
+            } catch (geoError) {
+              console.log("Failed to initialize geofence tracking:", geoError);
+            }
+          }
+        } else {
+          await AsyncStorage.removeItem("current_user_id");
+          setUserId(null);
+          setTodos([]);
+          setArchivedTodos([]);
+          if (Platform.OS !== "web") {
+            try {
+              await clearGeofenceTaskState();
+            } catch (clearError) {
+              console.log("Failed to clear geofence state:", clearError);
+            }
+          }
+        }
+      } catch (authError) {
+        console.log("Auth state change handling failed:", authError);
+      } finally {
+        setAuthReady(true);
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     lastShowArchive = showArchive;
@@ -206,8 +285,8 @@ const List: React.FC<Props> = ({
     try {
       MapLibreGL.setAccessToken?.("");
       MapLibreGL.setTelemetryEnabled?.(false);
-    } catch (err) {
-      console.log("MapLibre init error:", err);
+    } catch (error) {
+      console.log("MapLibre init error:", error);
     }
   }, []);
 
@@ -241,192 +320,6 @@ const List: React.FC<Props> = ({
     };
   }, []);
 
-  // Prioriteits-sorteerrichting: highToLow of lowToHigh
-  const [prioritySort, setPrioritySort] = useState<"highToLow" | "lowToHigh">(
-    "highToLow"
-  );
-  const togglePrioritySort = () =>
-    setPrioritySort((p) => (p === "highToLow" ? "lowToHigh" : "highToLow"));
-
-  // Prioriteit voor nieuwe taak (default medium)
-  const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">(
-    "medium"
-  );
-  const priorityRank = (p?: string) =>
-    p === "high" ? 2 : p === "medium" ? 1 : 0;
-  const priorityColor = (p?: "low" | "medium" | "high") => {
-    if (p === "high") return "#ff6b6b";
-    if (p === "medium") return "#ffb366";
-    if (p === "low") return "#6bc66b";
-    return "#6c757d";
-  };
-
-  // Bouw gesorteerde display-list: eerst priority (high->low) daarna createdAt (afhankelijk van sortOrder).
-  const buildDisplayList = (list: Todo[]) => {
-    return list
-      .map((item, originalIndex) => ({ item, originalIndex }))
-      .sort((a, b) => {
-        // sort by priority respecting prioritySort direction
-        const aPr = priorityRank(a.item.priority);
-        const bPr = priorityRank(b.item.priority);
-        const pr = prioritySort === "highToLow" ? bPr - aPr : aPr - bPr;
-        if (pr !== 0) return pr;
-        // tie-breaker: createdAt depending on sortOrder
-        const aTime = a.item.createdAt
-          ? new Date(a.item.createdAt).getTime()
-          : 0;
-        const bTime = b.item.createdAt
-          ? new Date(b.item.createdAt).getTime()
-          : 0;
-        if (sortOrder === "newest") return bTime - aTime;
-        return aTime - bTime;
-      });
-  };
-
-  const buildSubtaskDisplay = (list: SubTodo[]) => {
-    return list
-      .map((sub, originalIndex) => ({ sub, originalIndex }))
-      .sort((a, b) => {
-        const prA = priorityRank(a.sub.priority);
-        const prB = priorityRank(b.sub.priority);
-        const priorityDiff =
-          prioritySort === "highToLow" ? prB - prA : prA - prB;
-        if (priorityDiff !== 0) return priorityDiff;
-        const timeA = a.sub.createdAt ? new Date(a.sub.createdAt).getTime() : 0;
-        const timeB = b.sub.createdAt ? new Date(b.sub.createdAt).getTime() : 0;
-        return sortOrder === "newest" ? timeB - timeA : timeA - timeB;
-      });
-  };
-
-  // Kleuren afhankelijk van thema
-  const colors = {
-    background: theme === "light" ? "#3A86FFFF" : "#222",
-    formBackground: theme === "light" ? "#fff" : "#333",
-    text: theme === "light" ? "#000" : "#fff",
-    placeholder: theme === "light" ? "#888" : "#aaa",
-    doneText: theme === "light" ? "#6c757d" : "#bbb",
-    addButton: "#007bff",
-    deleteButton: "#dc3545",
-    archiveButton: "#ff8800",
-    logoutButton: "#ff0000ff",
-    toggleButton: "#6c757d",
-    warningBackground: theme === "light" ? "#fff4e5" : "#4a3a1a",
-    warningText: theme === "light" ? "#a15c00" : "#ffcc80",
-  };
-
-  const geofenceTargetsFromTodos = (list: Todo[]) =>
-    list
-      .filter((todo) => todo.location)
-      .map((todo) => ({
-        id: `${todo.createdAt ?? todo.text}-${todo.location?.latitude ?? 0}-${
-          todo.location?.longitude ?? 0
-        }`,
-        title: todo.text,
-        latitude: todo.location!.latitude,
-        longitude: todo.location!.longitude,
-      }));
-
-  // formatDate: zet ISO/string datum om naar leesbare tekst gebaseerd op taal
-  const formatDate = (dateString?: string | null) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleString(language === "nl" ? "nl-NL" : "en-US", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  };
-
-  // Sla taken op in Firestore (en normaliseer optionele velden naar null)
-  const saveTodosFirebase = async (
-    userId: string,
-    todosData: Todo[],
-    archivedData: Todo[]
-  ) => {
-    try {
-      const cleanTodos = todosData.map((todo) => ({
-        ...todo,
-        deadline: todo.deadline || null,
-        createdAt: todo.createdAt || null,
-        priority: todo.priority || null,
-        image: todo.image || null,
-        location: todo.location || null,
-        subtasks: todo.subtasks.map((sub) => ({
-          ...sub,
-          deadline: sub.deadline || null,
-          createdAt: sub.createdAt || null,
-          image: sub.image || null,
-          priority: sub.priority || null,
-        })),
-      }));
-      const cleanArchived = archivedData.map((todo) => ({
-        ...todo,
-        deadline: todo.deadline || null,
-        createdAt: todo.createdAt || null,
-        priority: todo.priority || null,
-        image: todo.image || null,
-        location: todo.location || null,
-        subtasks: todo.subtasks.map((sub) => ({
-          ...sub,
-          deadline: sub.deadline || null,
-          createdAt: sub.createdAt || null,
-          image: sub.image || null,
-          priority: sub.priority || null,
-        })),
-      }));
-      const userRef = doc(FIRESTORE_DB, "users", userId);
-      await setDoc(userRef, { todos: cleanTodos, archive: cleanArchived });
-    } catch (e) {
-      console.log("Fout bij opslaan naar Firebase:", e);
-    }
-  };
-
-  // Laad taken uit Firestore; retourneer lege arrays bij fouten of geen document
-  const loadTodosFirebase = async (userId: string) => {
-    try {
-      const userRef = doc(FIRESTORE_DB, "users", userId);
-      const docSnap = await getDoc(userRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        return { todos: data.todos || [], archive: data.archive || [] };
-      }
-      return { todos: [], archive: [] };
-    } catch (e) {
-      console.log("Fout bij laden vanuit Firebase:", e);
-      return { todos: [], archive: [] };
-    }
-  };
-
-  // Lifecycle: abonneer op auth state en laad data (lokale storage + firebase)
-  // UseEffect om iets te doen als er iets verandert
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, async (user) => {
-      if (user) {
-        setUserId(user.uid);
-        await AsyncStorage.setItem("current_user_id", user.uid);
-        const savedTodos = await AsyncStorage.getItem(`todos_${user.uid}`);
-        if (savedTodos) setTodos(JSON.parse(savedTodos));
-        const savedArchive = await AsyncStorage.getItem(`archive_${user.uid}`);
-        if (savedArchive) setArchivedTodos(JSON.parse(savedArchive));
-        const firebaseData = await loadTodosFirebase(user.uid);
-        setTodos(firebaseData.todos);
-        setArchivedTodos(firebaseData.archive);
-      } else {
-        await AsyncStorage.removeItem("current_user_id");
-        await clearGeofenceTaskState();
-        setUserId(null);
-        setTodos([]);
-        setArchivedTodos([]);
-      }
-      setAuthReady(true);
-    });
-    return unsubscribe;
-  }, []);
-
-  // Algemene save functie: update state + persist (locaal en firebase)
   const saveAll = (newTodos: Todo[], newArchived: Todo[]) => {
     setTodos(newTodos);
     setArchivedTodos(newArchived);
@@ -1682,6 +1575,104 @@ const List: React.FC<Props> = ({
     subtaskEditorDate || subtaskEditorTime
       ? combineDateAndTime(subtaskEditorDate, subtaskEditorTime)
       : null;
+  const taskEditorDeadlineDisplay = editorDeadlinePreview
+    ? formatDate(editorDeadlinePreview)
+    : "";
+  const subtaskEditorDeadlineDisplay = subtaskEditorDeadlinePreview
+    ? formatDate(subtaskEditorDeadlinePreview)
+    : "";
+  const subtaskModalStrings = {
+    editSubtask: translations[language].editSubtask,
+    subtaskName: translations[language].subtaskName,
+    clearDeadline: translations[language].clearDeadline,
+    noDeadline: translations[language].noDeadline,
+    addPhoto: translations[language].addPhoto,
+    noPhoto: translations[language].noPhoto,
+    pickFromGallery: translations[language].pickFromGallery,
+    removePhoto: translations[language].removePhoto,
+    cancel: translations[language].cancel,
+    saveChanges: translations[language].saveChanges,
+  } as const;
+  const taskModalStrings = {
+    editTask: translations[language].editTask,
+    taskName: translations[language].taskName,
+    clearDeadline: translations[language].clearDeadline,
+    noDeadline: translations[language].noDeadline,
+    addPhoto: translations[language].addPhoto,
+    noPhoto: translations[language].noPhoto,
+    pickFromGallery: translations[language].pickFromGallery,
+    removePhoto: translations[language].removePhoto,
+    locationLabel: translations[language].locationLabel,
+    noLocationSelected: translations[language].noLocationSelected,
+    updateLocation: translations[language].updateLocation,
+    removeLocation: translations[language].removeLocation,
+    cancel: translations[language].cancel,
+    saveChanges: translations[language].saveChanges,
+  } as const;
+  const handleSubtaskEditorPickCamera = () => {
+    if (subtaskEditorParentIndex === null || subtaskEditorIndex === null) {
+      return;
+    }
+    pickImage(
+      true,
+      subtaskEditorParentIndex,
+      subtaskEditorIndex,
+      subtaskEditorSource === "archive"
+    );
+  };
+  const handleSubtaskEditorPickGallery = () => {
+    if (subtaskEditorParentIndex === null || subtaskEditorIndex === null) {
+      return;
+    }
+    pickImage(
+      true,
+      subtaskEditorParentIndex,
+      subtaskEditorIndex,
+      subtaskEditorSource === "archive",
+      true
+    );
+  };
+  const handleTaskEditorPickCamera = () => {
+    if (taskEditorIndex === null) {
+      return;
+    }
+    pickImage(
+      false,
+      taskEditorIndex,
+      undefined,
+      taskEditorSource === "archive"
+    );
+  };
+  const handleTaskEditorPickGallery = () => {
+    if (taskEditorIndex === null) {
+      return;
+    }
+    pickImage(
+      false,
+      taskEditorIndex,
+      undefined,
+      taskEditorSource === "archive",
+      true
+    );
+  };
+  const handleTaskEditorRemoveImage = () => {
+    if (taskEditorIndex === null) {
+      return;
+    }
+    clearTodoImage(taskEditorIndex, taskEditorSource);
+  };
+  const handleTaskEditorUpdateLocation = () => {
+    if (taskEditorIndex === null) {
+      return;
+    }
+    openLocationPicker(taskEditorIndex, taskEditorSource);
+  };
+  const handleTaskEditorRemoveLocation = () => {
+    if (taskEditorIndex === null) {
+      return;
+    }
+    clearTodoLocation(taskEditorIndex, taskEditorSource);
+  };
 
   if (!authReady || !userId) {
     return null;
@@ -1801,428 +1792,83 @@ const List: React.FC<Props> = ({
         </TouchableOpacity>
       </View>
 
-      {locationModalVisible && (
-        <Modal
-          transparent
-          animationType="slide"
-          visible={locationModalVisible}
-          onRequestClose={confirmLocationSelection}
-        >
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: "rgba(0,0,0,0.5)",
-              justifyContent: "center",
-            }}
-          >
-            <View
-              style={{
-                margin: 20,
-                backgroundColor: colors.formBackground,
-                borderRadius: 12,
-                overflow: "hidden",
-                flex: 0.7,
-              }}
-            >
-              {locationHelperMessage && (
-                <View
-                  style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    backgroundColor: colors.warningBackground,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.warningText,
-                      fontWeight: "500",
-                      flex: 1,
-                    }}
-                  >
-                    {locationHelperMessage}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={dismissLocationHelperMessage}
-                    style={{ paddingLeft: 12 }}
-                  >
-                    <Ionicons
-                      name="close"
-                      size={20}
-                      color={colors.warningText}
-                    />
-                  </TouchableOpacity>
-                </View>
-              )}
-              <View style={{ flex: 1 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    paddingHorizontal: 12,
-                    paddingTop: 12,
-                    paddingBottom: 4,
-                  }}
-                >
-                  <TextInput
-                    value={locationSearchText}
-                    onChangeText={setLocationSearchText}
-                    placeholder={
-                      translations[language].searchAddressPlaceholder
-                    }
-                    placeholderTextColor={colors.placeholder}
-                    style={{
-                      flex: 1,
-                      borderWidth: 1,
-                      borderColor: "#ccc",
-                      borderRadius: 8,
-                      paddingHorizontal: 12,
-                      paddingVertical: Platform.OS === "ios" ? 10 : 8,
-                      color: colors.text,
-                      marginRight: 8,
-                      backgroundColor: theme === "light" ? "#fff" : "#444",
-                    }}
-                    returnKeyType="search"
-                    onSubmitEditing={searchLocationByAddress}
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                  />
-                  <TouchableOpacity
-                    onPress={searchLocationByAddress}
-                    disabled={locationLoading}
-                    style={{
-                      paddingVertical: 10,
-                      paddingHorizontal: 16,
-                      backgroundColor: colors.addButton,
-                      borderRadius: 8,
-                      opacity: locationLoading ? 0.6 : 1,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "600" }}>
-                      {translations[language].searchAddressButton}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <MapLibreGL.MapView
-                  style={{ flex: 1 }}
-                  mapStyle={MAPLIBRE_STYLE_URL}
-                  logoEnabled={false}
-                  compassEnabled
-                  onPress={handleMapPress}
-                >
-                  <MapLibreGL.Camera
-                    centerCoordinate={cameraCenter}
-                    zoomLevel={cameraZoom}
-                    animationMode="easeTo"
-                    animationDuration={500}
-                  />
-                  {activeMarker && (
-                    <MapLibreGL.PointAnnotation
-                      id="selected-location"
-                      coordinate={[
-                        activeMarker.longitude,
-                        activeMarker.latitude,
-                      ]}
-                      draggable
-                      onDragEnd={handleMarkerDragEnd}
-                    />
-                  )}
-                </MapLibreGL.MapView>
-                {locationLoading && (
-                  <View
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      backgroundColor: "rgba(0,0,0,0.1)",
-                      justifyContent: "center",
-                      alignItems: "center",
-                    }}
-                  >
-                    <ActivityIndicator size="large" color={colors.addButton} />
-                    <Text
-                      style={{
-                        marginTop: 12,
-                        color: colors.text,
-                        fontWeight: "500",
-                      }}
-                    >
-                      {language === "nl"
-                        ? "Locatie ophalen..."
-                        : "Fetching location..."}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  padding: 12,
-                }}
-              >
-                <TouchableOpacity onPress={clearLocationSelection}>
-                  <Text
-                    style={{
-                      color: colors.deleteButton,
-                      fontWeight: "600",
-                    }}
-                  >
-                    {language === "nl" ? "Verwijder" : "Clear"}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={confirmLocationSelection}>
-                  <Text style={{ color: colors.addButton, fontWeight: "600" }}>
-                    {language === "nl" ? "Bevestigen" : "Confirm"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {subtaskEditorVisible &&
-        subtaskEditorParentIndex !== null &&
-        subtaskEditorIndex !== null &&
-        editingSubtask && (
-          <Modal
-            transparent
-            animationType="slide"
-            visible={subtaskEditorVisible}
-            onRequestClose={closeSubtaskEditor}
-          >
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: "rgba(0,0,0,0.5)",
-                justifyContent: "center",
-              }}
-            >
-              <View
-                style={{
-                  margin: 20,
-                  backgroundColor: colors.formBackground,
-                  borderRadius: 12,
-                  padding: 16,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 18,
-                    fontWeight: "700",
-                    color: colors.text,
-                    marginBottom: 12,
-                  }}
-                >
-                  {translations[language].editSubtask}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: "600",
-                    color: colors.text,
-                    marginBottom: 6,
-                  }}
-                >
-                  {translations[language].subtaskName}
-                </Text>
-                <TextInput
-                  value={subtaskEditorText}
-                  onChangeText={setSubtaskEditorText}
-                  placeholder={translations[language].subtaskName}
-                  placeholderTextColor={colors.placeholder}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: "#ccc",
-                    borderRadius: 8,
-                    padding: 10,
-                    color: colors.text,
-                  }}
-                />
-
-                <View
-                  style={{
-                    flexDirection: "row",
-                    marginTop: 12,
-                    alignItems: "center",
-                  }}
-                >
-                  <TouchableOpacity
-                    onPress={openSubtaskEditorDate}
-                    style={{
-                      padding: 10,
-                      backgroundColor: "#6c757d",
-                      borderRadius: 8,
-                      marginRight: 8,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontSize: 16 }}>📅</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={openSubtaskEditorTime}
-                    style={{
-                      padding: 10,
-                      backgroundColor: "#6c757d",
-                      borderRadius: 8,
-                      marginRight: 8,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontSize: 16 }}>⏰</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={clearSubtaskEditorDeadline}>
-                    <Text style={{ color: colors.deleteButton }}>
-                      {translations[language].clearDeadline}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <Text
-                  style={{
-                    marginTop: 8,
-                    color: colors.text,
-                    fontSize: 14,
-                  }}
-                >
-                  {subtaskEditorDeadlinePreview
-                    ? formatDate(subtaskEditorDeadlinePreview)
-                    : translations[language].noDeadline}
-                </Text>
-
-                {showSubtaskEditorDatePicker && Platform.OS !== "web" && (
-                  <DateTimePicker
-                    value={subtaskEditorDate || new Date()}
-                    mode="date"
-                    display="default"
-                    onChange={handleSubtaskEditorDateChange}
-                  />
-                )}
-
-                {showSubtaskEditorTimePicker && Platform.OS !== "web" && (
-                  <DateTimePicker
-                    value={subtaskEditorTime || new Date()}
-                    mode="time"
-                    display="default"
-                    onChange={handleSubtaskEditorTimeChange}
-                  />
-                )}
-
-                <View style={{ marginTop: 16 }}>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      color: colors.text,
-                      marginBottom: 6,
-                    }}
-                  >
-                    {translations[language].addPhoto}
-                  </Text>
-                  {editingSubtask.image ? (
-                    <Image
-                      source={{ uri: editingSubtask.image }}
-                      style={{
-                        width: 120,
-                        height: 120,
-                        borderRadius: 10,
-                        marginBottom: 8,
-                      }}
-                    />
-                  ) : (
-                    <Text style={{ color: colors.placeholder }}>
-                      {translations[language].noPhoto}
-                    </Text>
-                  )}
-                  <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                    <TouchableOpacity
-                      onPress={() =>
-                        subtaskEditorParentIndex !== null &&
-                        subtaskEditorIndex !== null &&
-                        pickImage(
-                          true,
-                          subtaskEditorParentIndex,
-                          subtaskEditorIndex,
-                          subtaskEditorSource === "archive"
-                        )
-                      }
-                      style={{ marginRight: 12, marginBottom: 8 }}
-                    >
-                      <Text style={{ color: colors.addButton }}>
-                        📷 {translations[language].addPhoto}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() =>
-                        subtaskEditorParentIndex !== null &&
-                        subtaskEditorIndex !== null &&
-                        pickImage(
-                          true,
-                          subtaskEditorParentIndex,
-                          subtaskEditorIndex,
-                          subtaskEditorSource === "archive",
-                          true
-                        )
-                      }
-                      style={{ marginRight: 12, marginBottom: 8 }}
-                    >
-                      <Text style={{ color: colors.addButton }}>
-                        🖼️ {translations[language].pickFromGallery}
-                      </Text>
-                    </TouchableOpacity>
-                    {editingSubtask.image && (
-                      <TouchableOpacity
-                        onPress={clearSubtaskEditorImage}
-                        style={{ marginBottom: 8 }}
-                      >
-                        <Text style={{ color: colors.deleteButton }}>
-                          ✖ {translations[language].removePhoto}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    marginTop: 20,
-                  }}
-                >
-                  <TouchableOpacity
-                    onPress={closeSubtaskEditor}
-                    style={{
-                      paddingVertical: 10,
-                      paddingHorizontal: 16,
-                      borderRadius: 8,
-                      backgroundColor: colors.toggleButton,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "600" }}>
-                      {translations[language].cancel}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={saveSubtaskEditor}
-                    style={{
-                      paddingVertical: 10,
-                      paddingHorizontal: 16,
-                      borderRadius: 8,
-                      backgroundColor: colors.addButton,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "600" }}>
-                      {translations[language].saveChanges}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </Modal>
-        )}
+      <LocationModal
+        visible={locationModalVisible}
+        colors={colors}
+        language={language}
+        theme={theme}
+        helperMessage={locationHelperMessage}
+        onDismissHelper={() => setLocationHelperMessage(null)}
+        searchText={locationSearchText}
+        onChangeSearchText={setLocationSearchText}
+        onSearch={searchLocationByAddress}
+        loading={locationLoading}
+        onClear={clearLocationSelection}
+        onConfirm={confirmLocationSelection}
+        mapStyleUrl={MAPLIBRE_STYLE_URL}
+        cameraCenter={cameraCenter}
+        cameraZoom={cameraZoom}
+        activeMarker={
+          selectedLocation ??
+          (mapRegion
+            ? {
+                latitude: mapRegion.latitude,
+                longitude: mapRegion.longitude,
+              }
+            : null)
+        }
+        onMapPress={handleMapPress}
+        onMarkerDragEnd={handleMarkerDragEnd}
+      />
+      <SubtaskEditorModal
+        visible={subtaskEditorVisible}
+        colors={colors}
+        language={language}
+        subtaskText={subtaskEditorText}
+        onChangeText={setSubtaskEditorText}
+        onOpenDate={openSubtaskEditorDate}
+        onOpenTime={openSubtaskEditorTime}
+        onClearDeadline={clearSubtaskEditorDeadline}
+        deadlinePreview={subtaskEditorDeadlineDisplay}
+        showDatePicker={showSubtaskEditorDatePicker}
+        showTimePicker={showSubtaskEditorTimePicker}
+        dateValue={subtaskEditorDate}
+        timeValue={subtaskEditorTime}
+        onChangeDate={handleSubtaskEditorDateChange}
+        onChangeTime={handleSubtaskEditorTimeChange}
+        onClose={closeSubtaskEditor}
+        onSave={saveSubtaskEditor}
+        onPickCamera={handleSubtaskEditorPickCamera}
+        onPickGallery={handleSubtaskEditorPickGallery}
+        onRemoveImage={clearSubtaskEditorImage}
+        editingSubtask={editingSubtask}
+        strings={subtaskModalStrings}
+      />
+      <TaskEditorModal
+        visible={taskEditorVisible}
+        colors={colors}
+        taskText={taskEditorText}
+        onChangeText={setTaskEditorText}
+        onOpenDate={openTaskEditorDate}
+        onOpenTime={openTaskEditorTime}
+        onClearDeadline={clearTaskEditorDeadline}
+        deadlinePreview={taskEditorDeadlineDisplay}
+        showDatePicker={showTaskEditorDatePicker}
+        showTimePicker={showTaskEditorTimePicker}
+        dateValue={taskEditorDate}
+        timeValue={taskEditorTime}
+        onChangeDate={handleTaskEditorDateChange}
+        onChangeTime={handleTaskEditorTimeChange}
+        onClose={closeTodoEditor}
+        onSave={saveTodoEditor}
+        onPickCamera={handleTaskEditorPickCamera}
+        onPickGallery={handleTaskEditorPickGallery}
+        onRemoveImage={handleTaskEditorRemoveImage}
+        editingTodo={editingTodo}
+        onUpdateLocation={handleTaskEditorUpdateLocation}
+        onRemoveLocation={handleTaskEditorRemoveLocation}
+        strings={taskModalStrings}
+      />
 
       {/* Als we het hoofd taken scherm tonen */}
       {!showArchive ? (
@@ -2400,293 +2046,6 @@ const List: React.FC<Props> = ({
                 if (time) setSubtaskTime(time);
               }}
             />
-          )}
-
-          {taskEditorVisible && taskEditorIndex !== null && (
-            <Modal
-              transparent
-              animationType="slide"
-              visible={taskEditorVisible}
-              onRequestClose={closeTodoEditor}
-            >
-              <View
-                style={{
-                  flex: 1,
-                  backgroundColor: "rgba(0,0,0,0.5)",
-                  justifyContent: "center",
-                }}
-              >
-                <View
-                  style={{
-                    margin: 20,
-                    backgroundColor: colors.formBackground,
-                    borderRadius: 12,
-                    padding: 16,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 18,
-                      fontWeight: "700",
-                      color: colors.text,
-                      marginBottom: 12,
-                    }}
-                  >
-                    {translations[language].editTask}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      color: colors.text,
-                      marginBottom: 6,
-                    }}
-                  >
-                    {translations[language].taskName}
-                  </Text>
-                  <TextInput
-                    value={taskEditorText}
-                    onChangeText={setTaskEditorText}
-                    placeholder={translations[language].taskName}
-                    placeholderTextColor={colors.placeholder}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: "#ccc",
-                      borderRadius: 8,
-                      padding: 10,
-                      color: colors.text,
-                    }}
-                  />
-
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      marginTop: 12,
-                      alignItems: "center",
-                    }}
-                  >
-                    <TouchableOpacity
-                      onPress={openTaskEditorDate}
-                      style={{
-                        padding: 10,
-                        backgroundColor: "#6c757d",
-                        borderRadius: 8,
-                        marginRight: 8,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontSize: 16 }}>📅</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={openTaskEditorTime}
-                      style={{
-                        padding: 10,
-                        backgroundColor: "#6c757d",
-                        borderRadius: 8,
-                        marginRight: 8,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontSize: 16 }}>⏰</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={clearTaskEditorDeadline}>
-                      <Text style={{ color: colors.deleteButton }}>
-                        {translations[language].clearDeadline}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <Text
-                    style={{
-                      marginTop: 8,
-                      color: colors.text,
-                      fontSize: 14,
-                    }}
-                  >
-                    {editorDeadlinePreview
-                      ? formatDate(editorDeadlinePreview)
-                      : translations[language].noDeadline}
-                  </Text>
-
-                  {showTaskEditorDatePicker && Platform.OS !== "web" && (
-                    <DateTimePicker
-                      value={taskEditorDate || new Date()}
-                      mode="date"
-                      display="default"
-                      onChange={handleTaskEditorDateChange}
-                    />
-                  )}
-
-                  {showTaskEditorTimePicker && Platform.OS !== "web" && (
-                    <DateTimePicker
-                      value={taskEditorTime || new Date()}
-                      mode="time"
-                      display="default"
-                      onChange={handleTaskEditorTimeChange}
-                    />
-                  )}
-
-                  <View style={{ marginTop: 16 }}>
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        fontWeight: "600",
-                        color: colors.text,
-                        marginBottom: 6,
-                      }}
-                    >
-                      {translations[language].addPhoto}
-                    </Text>
-                    {editingTodo?.image ? (
-                      <Image
-                        source={{ uri: editingTodo.image }}
-                        style={{
-                          width: 120,
-                          height: 120,
-                          borderRadius: 10,
-                          marginBottom: 8,
-                        }}
-                      />
-                    ) : (
-                      <Text style={{ color: colors.placeholder }}>
-                        {translations[language].noPhoto}
-                      </Text>
-                    )}
-                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                      <TouchableOpacity
-                        onPress={() =>
-                          taskEditorIndex !== null &&
-                          pickImage(
-                            false,
-                            taskEditorIndex,
-                            undefined,
-                            taskEditorSource === "archive"
-                          )
-                        }
-                        style={{ marginRight: 12, marginBottom: 8 }}
-                      >
-                        <Text style={{ color: colors.addButton }}>
-                          📷 {translations[language].addPhoto}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() =>
-                          taskEditorIndex !== null &&
-                          pickImage(
-                            false,
-                            taskEditorIndex,
-                            undefined,
-                            taskEditorSource === "archive",
-                            true
-                          )
-                        }
-                        style={{ marginRight: 12, marginBottom: 8 }}
-                      >
-                        <Text style={{ color: colors.addButton }}>
-                          🖼️ {translations[language].pickFromGallery}
-                        </Text>
-                      </TouchableOpacity>
-                      {editingTodo?.image && (
-                        <TouchableOpacity
-                          onPress={() =>
-                            taskEditorIndex !== null &&
-                            clearTodoImage(taskEditorIndex, taskEditorSource)
-                          }
-                          style={{ marginBottom: 8 }}
-                        >
-                          <Text style={{ color: colors.deleteButton }}>
-                            ✖ {translations[language].removePhoto}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-
-                  <View style={{ marginTop: 16 }}>
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        fontWeight: "600",
-                        color: colors.text,
-                        marginBottom: 6,
-                      }}
-                    >
-                      {translations[language].locationLabel}
-                    </Text>
-                    {editingTodo?.location ? (
-                      <Text style={{ color: colors.text, marginBottom: 8 }}>
-                        {editingTodo.location.latitude.toFixed(4)},{" "}
-                        {editingTodo.location.longitude.toFixed(4)}
-                      </Text>
-                    ) : (
-                      <Text
-                        style={{ color: colors.placeholder, marginBottom: 8 }}
-                      >
-                        {translations[language].noLocationSelected}
-                      </Text>
-                    )}
-                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                      <TouchableOpacity
-                        onPress={() =>
-                          taskEditorIndex !== null &&
-                          openLocationPicker(taskEditorIndex, taskEditorSource)
-                        }
-                        style={{ marginRight: 12, marginBottom: 8 }}
-                      >
-                        <Text style={{ color: colors.addButton }}>
-                          📍 {translations[language].updateLocation}
-                        </Text>
-                      </TouchableOpacity>
-                      {editingTodo?.location && (
-                        <TouchableOpacity
-                          onPress={() =>
-                            taskEditorIndex !== null &&
-                            clearTodoLocation(taskEditorIndex, taskEditorSource)
-                          }
-                          style={{ marginBottom: 8 }}
-                        >
-                          <Text style={{ color: colors.deleteButton }}>
-                            ✖ {translations[language].removeLocation}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      marginTop: 20,
-                    }}
-                  >
-                    <TouchableOpacity
-                      onPress={closeTodoEditor}
-                      style={{
-                        paddingVertical: 10,
-                        paddingHorizontal: 16,
-                        borderRadius: 8,
-                        backgroundColor: colors.toggleButton,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "600" }}>
-                        {translations[language].cancel}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={saveTodoEditor}
-                      style={{
-                        paddingVertical: 10,
-                        paddingHorizontal: 16,
-                        borderRadius: 8,
-                        backgroundColor: colors.addButton,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "600" }}>
-                        {translations[language].saveChanges}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            </Modal>
           )}
 
           {/* Lijst met actieve taken (gesorteerd op priority + createdAt) */}
