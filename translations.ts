@@ -47,6 +47,10 @@ export const translations = {
     locationPermissionBackgroundDeniedMessage:
       "Sta altijd-locatie toe zodat we kunnen controleren of je binnen 100 meter van een taak bent.",
     noLocationSelected: "Geen locatie geselecteerd",
+    searchAddressPlaceholder: "Zoek adres...",
+    searchAddressButton: "Zoek",
+    searchAddressNoResult: "Geen resultaten gevonden voor dit adres.",
+    searchAddressError: "Adres zoeken mislukt.",
     nearbyTaskTitle: "Taak in de buurt",
     nearbyTaskBody: (task: string) =>
       `Je bent binnen 100 meter van \"${task}\".`,
@@ -99,6 +103,10 @@ export const translations = {
     locationPermissionBackgroundDeniedMessage:
       "Allow always-on location so we can detect when you are within 100 meters of a task.",
     noLocationSelected: "No location selected",
+    searchAddressPlaceholder: "Search address...",
+    searchAddressButton: "Search",
+    searchAddressNoResult: "No results found for that address.",
+    searchAddressError: "Address lookup failed.",
     nearbyTaskTitle: "Task nearby",
     nearbyTaskBody: (task: string) =>
       `You are within 100 meters of \"${task}\".`,

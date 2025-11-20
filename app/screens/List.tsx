@@ -158,6 +158,7 @@ const List: React.FC<Props> = ({
   >(null);
   const dismissLocationHelperMessage = () => setLocationHelperMessage(null);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [locationSearchText, setLocationSearchText] = useState("");
   const [editingLocationTodoIndex, setEditingLocationTodoIndex] = useState<
     number | null
   >(null);
@@ -1135,6 +1136,7 @@ const List: React.FC<Props> = ({
     setEditingLocationSource(source);
     setLocationHelperMessage(null);
     setLocationLoading(true);
+    setLocationSearchText("");
     setLocationModalVisible(true);
 
     let workingLocation = seededLocation ? { ...seededLocation } : null;
@@ -1272,12 +1274,60 @@ const List: React.FC<Props> = ({
     }
     setEditingLocationTodoIndex(null);
     setEditingLocationSource("active");
+    setLocationSearchText("");
   };
   const clearLocationSelection = () => {
     setSelectedLocation(null);
     setMapRegion(DEFAULT_REGION);
     setLocationHelperMessage(null);
     setLocationLoading(false);
+    setLocationSearchText("");
+  };
+  const searchLocationByAddress = async () => {
+    const query = locationSearchText.trim();
+    if (!query) {
+      showInputWarning(
+        language === "nl"
+          ? "Voer een adres in om te zoeken."
+          : "Enter an address to search."
+      );
+      return;
+    }
+    if (Platform.OS === "web") {
+      setLocationHelperMessage(
+        language === "nl"
+          ? "Adres zoeken wordt op web niet ondersteund."
+          : "Address search is not supported on web."
+      );
+      return;
+    }
+    try {
+      setLocationHelperMessage(null);
+      setLocationLoading(true);
+      const results = await Location.geocodeAsync(query);
+      if (!results.length) {
+        setLocationHelperMessage(translations[language].searchAddressNoResult);
+        return;
+      }
+      const best = results[0];
+      const nextLocation = {
+        latitude: best.latitude,
+        longitude: best.longitude,
+      };
+      setSelectedLocation(nextLocation);
+      setMapRegion({
+        latitude: nextLocation.latitude,
+        longitude: nextLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+      setLocationHelperMessage(null);
+    } catch (error) {
+      console.log("Address geocode failed:", error);
+      setLocationHelperMessage(translations[language].searchAddressError);
+    } finally {
+      setLocationLoading(false);
+    }
   };
   const openArchivedLocation = (location: LatLng) => {
     if (Platform.OS === "web") {
@@ -1298,6 +1348,7 @@ const List: React.FC<Props> = ({
     });
     setLocationHelperMessage(null);
     setLocationLoading(false);
+    setLocationSearchText("");
     setLocationModalVisible(true);
   };
   const updateSelectedLocation = (coord: LatLng) => {
@@ -1806,6 +1857,54 @@ const List: React.FC<Props> = ({
                 </View>
               )}
               <View style={{ flex: 1 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingHorizontal: 12,
+                    paddingTop: 12,
+                    paddingBottom: 4,
+                  }}
+                >
+                  <TextInput
+                    value={locationSearchText}
+                    onChangeText={setLocationSearchText}
+                    placeholder={
+                      translations[language].searchAddressPlaceholder
+                    }
+                    placeholderTextColor={colors.placeholder}
+                    style={{
+                      flex: 1,
+                      borderWidth: 1,
+                      borderColor: "#ccc",
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: Platform.OS === "ios" ? 10 : 8,
+                      color: colors.text,
+                      marginRight: 8,
+                      backgroundColor: theme === "light" ? "#fff" : "#444",
+                    }}
+                    returnKeyType="search"
+                    onSubmitEditing={searchLocationByAddress}
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    onPress={searchLocationByAddress}
+                    disabled={locationLoading}
+                    style={{
+                      paddingVertical: 10,
+                      paddingHorizontal: 16,
+                      backgroundColor: colors.addButton,
+                      borderRadius: 8,
+                      opacity: locationLoading ? 0.6 : 1,
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "600" }}>
+                      {translations[language].searchAddressButton}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <MapLibreGL.MapView
                   style={{ flex: 1 }}
                   mapStyle={MAPLIBRE_STYLE_URL}
