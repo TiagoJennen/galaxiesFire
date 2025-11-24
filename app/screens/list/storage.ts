@@ -16,6 +16,7 @@ const normalizeTodo = (todo: Todo): Todo => ({
     createdAt: sub.createdAt || null,
     image: sub.image || null,
     priority: sub.priority || null,
+    location: sub.location || null,
   })),
 });
 

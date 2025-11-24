@@ -12,6 +12,7 @@ export interface SubTodo {
   image?: string | null;
   createdAt?: string | null;
   priority?: "low" | "medium" | "high" | null;
+  location?: LatLng | null;
 }
 
 export interface Todo {

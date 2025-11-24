@@ -52,6 +52,7 @@ import TaskEditorModal from "./list/components/TaskEditorModal";
 
 // Onthoud de laatst gekozen lijstweergave zodat toggles (zoals thema) het niet resetten.
 let lastShowArchive = false;
+const NEW_SUBTASK_LOCATION_INDEX = -1;
 
 // Hoofdfunctie van het scherm: toont takenlijst, formulieren en archive
 const List: React.FC<ListScreenProps> = ({
@@ -83,6 +84,9 @@ const List: React.FC<ListScreenProps> = ({
   const [newSubtaskPriority, setNewSubtaskPriority] = useState<
     "low" | "medium" | "high"
   >("medium");
+  const [newSubtaskLocation, setNewSubtaskLocation] = useState<LatLng | null>(
+    null
+  );
   const [sortOrder, setSortOrder] = useState<"oldest" | "newest">("oldest");
   const [prioritySort, setPrioritySort] = useState<"highToLow" | "lowToHigh">(
     "highToLow"
@@ -102,6 +106,8 @@ const List: React.FC<ListScreenProps> = ({
   >(null);
   const [editingLocationSource, setEditingLocationSource] =
     useState<ListSource>("active");
+  const [editingLocationSubtaskIndex, setEditingLocationSubtaskIndex] =
+    useState<number | null>(null);
   const [taskEditorVisible, setTaskEditorVisible] = useState(false);
   const [taskEditorIndex, setTaskEditorIndex] = useState<number | null>(null);
   const [taskEditorText, setTaskEditorText] = useState("");
@@ -574,6 +580,29 @@ const List: React.FC<ListScreenProps> = ({
     }
   };
 
+  const updateSubtaskLocation = (
+    parentIndex: number,
+    subIndex: number,
+    location: LatLng | null,
+    source: ListSource = "active"
+  ) => {
+    const updatedTodos = [...todos];
+    const updatedArchived = [...archivedTodos];
+    const targetList = source === "archive" ? updatedArchived : updatedTodos;
+    const parent = targetList[parentIndex];
+    if (!parent || !parent.subtasks[subIndex]) return;
+    const updatedSubtasks = [...parent.subtasks];
+    updatedSubtasks[subIndex] = {
+      ...updatedSubtasks[subIndex],
+      location,
+    };
+    targetList[parentIndex] = {
+      ...parent,
+      subtasks: updatedSubtasks,
+    };
+    saveAll(updatedTodos, updatedArchived);
+  };
+
   const openSubtaskEditor = (
     todoIndex: number,
     subIndex: number,
@@ -610,6 +639,7 @@ const List: React.FC<ListScreenProps> = ({
     setShowSubtaskEditorDatePicker(false);
     setShowSubtaskEditorTimePicker(false);
     setSubtaskEditorSource("active");
+    setEditingLocationSubtaskIndex(null);
   };
 
   const saveSubtaskEditor = () => {
@@ -729,18 +759,41 @@ const List: React.FC<ListScreenProps> = ({
   };
 
   // Wissel done status voor taak
-  const toggleTodo = (index: number) => {
-    const updated = [...todos];
-    updated[index].done = !updated[index].done;
-    saveAll(updated, archivedTodos);
+  const toggleTodo = (index: number, source: ListSource = "active") => {
+    const updatedTodos = [...todos];
+    const updatedArchived = [...archivedTodos];
+    if (source === "archive") {
+      if (!updatedArchived[index]) return;
+      updatedArchived[index] = {
+        ...updatedArchived[index],
+        done: !updatedArchived[index].done,
+      };
+    } else {
+      if (!updatedTodos[index]) return;
+      updatedTodos[index] = {
+        ...updatedTodos[index],
+        done: !updatedTodos[index].done,
+      };
+    }
+    saveAll(updatedTodos, updatedArchived);
   };
 
   // Wissel done status voor subtask
-  const toggleSubtask = (todoIndex: number, subIndex: number) => {
-    const updated = [...todos];
-    updated[todoIndex].subtasks[subIndex].done =
-      !updated[todoIndex].subtasks[subIndex].done;
-    saveAll(updated, archivedTodos);
+  const toggleSubtask = (
+    todoIndex: number,
+    subIndex: number,
+    source: ListSource = "active"
+  ) => {
+    const updatedTodos = [...todos];
+    const updatedArchived = [...archivedTodos];
+    const targetList = source === "archive" ? updatedArchived : updatedTodos;
+    const parent = targetList[todoIndex];
+    const sub = parent?.subtasks[subIndex];
+    if (!parent || !sub) return;
+    const updatedSubtasks = [...parent.subtasks];
+    updatedSubtasks[subIndex] = { ...sub, done: !sub.done };
+    targetList[todoIndex] = { ...parent, subtasks: updatedSubtasks };
+    saveAll(updatedTodos, updatedArchived);
   };
 
   // Verwijder taak (met confirm)
@@ -784,12 +837,14 @@ const List: React.FC<ListScreenProps> = ({
       image: null,
       createdAt: new Date().toISOString(),
       priority: newSubtaskPriority,
+      location: newSubtaskLocation,
     });
     saveAll(updatedTodos, archivedTodos);
     setSubtaskText("");
     setSubtaskDate(null);
     setSubtaskTime(null);
     setNewSubtaskPriority("medium");
+    setNewSubtaskLocation(null);
     setEditingTodoIndex(null);
   };
 
@@ -980,7 +1035,8 @@ const List: React.FC<ListScreenProps> = ({
 
   const openLocationPicker = async (
     todoIndex?: number,
-    source: ListSource = "active"
+    source: ListSource = "active",
+    subtaskIndex: number | null = null
   ) => {
     if (Platform.OS === "web") {
       showInputWarning(
@@ -996,20 +1052,32 @@ const List: React.FC<ListScreenProps> = ({
     let seededLocation: LatLng | null = null;
     let seededRegion: Region = { ...DEFAULT_REGION };
 
-    if (editingIndex !== null && sourceList[editingIndex]?.location) {
-      const existing = sourceList[editingIndex]?.location;
-      if (existing) {
-        seededLocation = {
-          latitude: existing.latitude,
-          longitude: existing.longitude,
-        };
+    if (editingIndex !== null) {
+      if (typeof subtaskIndex === "number") {
+        if (subtaskIndex === NEW_SUBTASK_LOCATION_INDEX) {
+          if (newSubtaskLocation) {
+            seededLocation = { ...newSubtaskLocation };
+          }
+        } else {
+          const existingSub = sourceList[editingIndex]?.subtasks[subtaskIndex];
+          if (existingSub?.location) {
+            seededLocation = { ...existingSub.location };
+          }
+        }
+      } else {
+        const existing = sourceList[editingIndex]?.location;
+        if (existing) {
+          seededLocation = { ...existing };
+        }
       }
-    } else if (selectedLocation) {
+    }
+
+    if (!seededLocation && selectedLocation) {
       seededLocation = {
         latitude: selectedLocation.latitude,
         longitude: selectedLocation.longitude,
       };
-    } else if (mapRegion) {
+    } else if (!seededLocation && mapRegion) {
       seededLocation = {
         latitude: mapRegion.latitude,
         longitude: mapRegion.longitude,
@@ -1027,6 +1095,9 @@ const List: React.FC<ListScreenProps> = ({
 
     setEditingLocationTodoIndex(editingIndex);
     setEditingLocationSource(source);
+    setEditingLocationSubtaskIndex(
+      typeof subtaskIndex === "number" ? subtaskIndex : null
+    );
     setLocationHelperMessage(null);
     setLocationLoading(true);
     setLocationSearchText("");
@@ -1137,7 +1208,21 @@ const List: React.FC<ListScreenProps> = ({
         }
       : null;
     const editingIndex = editingLocationTodoIndex;
-    if (editingIndex !== null) {
+    const subIndex = editingLocationSubtaskIndex;
+    if (editingIndex !== null && subIndex !== null) {
+      if (subIndex === NEW_SUBTASK_LOCATION_INDEX) {
+        setNewSubtaskLocation(resolvedLocation);
+      } else {
+        updateSubtaskLocation(
+          editingIndex,
+          subIndex,
+          resolvedLocation,
+          editingLocationSource
+        );
+      }
+      setSelectedLocation(null);
+      setMapRegion(null);
+    } else if (editingIndex !== null) {
       const updatedTodos = [...todos];
       const updatedArchived = [...archivedTodos];
       if (editingLocationSource === "archive") {
@@ -1166,6 +1251,7 @@ const List: React.FC<ListScreenProps> = ({
       setMapRegion(null);
     }
     setEditingLocationTodoIndex(null);
+    setEditingLocationSubtaskIndex(null);
     setEditingLocationSource("active");
     setLocationSearchText("");
   };
@@ -1232,6 +1318,7 @@ const List: React.FC<ListScreenProps> = ({
       return;
     }
     setEditingLocationTodoIndex(null);
+    setEditingLocationSubtaskIndex(null);
     setSelectedLocation({ ...location });
     setMapRegion({
       latitude: location.latitude,
@@ -1590,6 +1677,10 @@ const List: React.FC<ListScreenProps> = ({
     noPhoto: translations[language].noPhoto,
     pickFromGallery: translations[language].pickFromGallery,
     removePhoto: translations[language].removePhoto,
+    locationLabel: translations[language].locationLabel,
+    noLocationSelected: translations[language].noLocationSelected,
+    updateLocation: translations[language].updateLocation,
+    removeLocation: translations[language].removeLocation,
     cancel: translations[language].cancel,
     saveChanges: translations[language].saveChanges,
   } as const;
@@ -1631,6 +1722,29 @@ const List: React.FC<ListScreenProps> = ({
       subtaskEditorSource === "archive",
       true
     );
+  };
+  const handleSubtaskEditorUpdateLocation = () => {
+    if (subtaskEditorParentIndex === null || subtaskEditorIndex === null) {
+      return;
+    }
+    openLocationPicker(
+      subtaskEditorParentIndex,
+      subtaskEditorSource,
+      subtaskEditorIndex
+    );
+  };
+  const handleSubtaskEditorRemoveLocation = () => {
+    if (subtaskEditorParentIndex === null || subtaskEditorIndex === null) {
+      return;
+    }
+    updateSubtaskLocation(
+      subtaskEditorParentIndex,
+      subtaskEditorIndex,
+      null,
+      subtaskEditorSource
+    );
+    setSelectedLocation(null);
+    setMapRegion(null);
   };
   const handleTaskEditorPickCamera = () => {
     if (taskEditorIndex === null) {
@@ -1842,6 +1956,9 @@ const List: React.FC<ListScreenProps> = ({
         onPickGallery={handleSubtaskEditorPickGallery}
         onRemoveImage={clearSubtaskEditorImage}
         editingSubtask={editingSubtask}
+        onUpdateLocation={handleSubtaskEditorUpdateLocation}
+        onRemoveLocation={handleSubtaskEditorRemoveLocation}
+        location={editingSubtask?.location ?? null}
         strings={subtaskModalStrings}
       />
       <TaskEditorModal
@@ -2369,6 +2486,39 @@ const List: React.FC<ListScreenProps> = ({
                                     {formatDate(sub.deadline)}
                                   </Text>
                                 )}
+                                {sub.location && (
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      openLocationPicker(
+                                        originalIndex,
+                                        "active",
+                                        subIndex
+                                      )
+                                    }
+                                    accessibilityRole="button"
+                                    accessibilityHint={
+                                      language === "nl"
+                                        ? "Wijzig de locatie van deze subtaak."
+                                        : "Edit this subtask's location."
+                                    }
+                                    style={{
+                                      alignSelf: "flex-start",
+                                      marginTop: 2,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontSize: 12,
+                                        color: "#6c757d",
+                                        textDecorationLine: "underline",
+                                      }}
+                                    >
+                                      {translations[language].locationLabel}:{" "}
+                                      {sub.location.latitude.toFixed(4)},{" "}
+                                      {sub.location.longitude.toFixed(4)}
+                                    </Text>
+                                  </TouchableOpacity>
+                                )}
                                 {sub.image && (
                                   <Image
                                     source={{ uri: sub.image }}
@@ -2468,7 +2618,10 @@ const List: React.FC<ListScreenProps> = ({
                       )}
 
                       <TouchableOpacity
-                        onPress={() => setEditingTodoIndex(originalIndex)}
+                        onPress={() => {
+                          setEditingTodoIndex(originalIndex);
+                          setNewSubtaskLocation(null);
+                        }}
                         style={{ marginTop: 5 }}
                       >
                         <Text style={{ color: colors.addButton }}>
@@ -2578,6 +2731,35 @@ const List: React.FC<ListScreenProps> = ({
                             }}
                           >
                             <Text style={{ color: "#fff" }}>⏰</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() =>
+                              openLocationPicker(
+                                originalIndex,
+                                "active",
+                                NEW_SUBTASK_LOCATION_INDEX
+                              )
+                            }
+                            accessibilityLabel={
+                              language === "nl"
+                                ? "Locatie voor subtaak instellen"
+                                : "Set subtask location"
+                            }
+                            accessibilityHint={
+                              language === "nl"
+                                ? "Open de kaart om een locatie voor deze subtaak te kiezen."
+                                : "Open the map to choose a location for this subtask."
+                            }
+                            style={{
+                              marginLeft: 5,
+                              padding: 8,
+                              backgroundColor: "#6c757d",
+                              borderRadius: 8,
+                              justifyContent: "center",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Text style={{ color: "#fff" }}>📍</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => addSubtask(originalIndex)}
@@ -2955,6 +3137,39 @@ const List: React.FC<ListScreenProps> = ({
                                     {translations[language].deadline}:{" "}
                                     {formatDate(sub.deadline)}
                                   </Text>
+                                )}
+                                {sub.location && (
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      openLocationPicker(
+                                        originalArchiveIndex,
+                                        "archive",
+                                        subIndex
+                                      )
+                                    }
+                                    accessibilityRole="button"
+                                    accessibilityHint={
+                                      language === "nl"
+                                        ? "Wijzig de locatie van deze archief subtaak."
+                                        : "Edit this archived subtask's location."
+                                    }
+                                    style={{
+                                      alignSelf: "flex-start",
+                                      marginTop: 2,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontSize: 12,
+                                        color: "#6c757d",
+                                        textDecorationLine: "underline",
+                                      }}
+                                    >
+                                      {translations[language].locationLabel}:{" "}
+                                      {sub.location.latitude.toFixed(4)},{" "}
+                                      {sub.location.longitude.toFixed(4)}
+                                    </Text>
+                                  </TouchableOpacity>
                                 )}
                                 {sub.image && (
                                   <Image

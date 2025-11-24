@@ -12,7 +12,7 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import type { ThemeColors } from "../theme";
-import type { SubTodo } from "../types";
+import type { SubTodo, LatLng } from "../types";
 
 type SubtaskStrings = {
   editSubtask: string;
@@ -23,6 +23,10 @@ type SubtaskStrings = {
   noPhoto: string;
   pickFromGallery: string;
   removePhoto: string;
+  locationLabel: string;
+  noLocationSelected: string;
+  updateLocation: string;
+  removeLocation: string;
   cancel: string;
   saveChanges: string;
 };
@@ -49,6 +53,9 @@ type SubtaskEditorModalProps = {
   onPickGallery: () => void;
   onRemoveImage: () => void;
   editingSubtask: SubTodo | null;
+  onUpdateLocation: () => void;
+  onRemoveLocation: () => void;
+  location: LatLng | null;
   strings: SubtaskStrings;
 };
 
@@ -74,6 +81,9 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
   onPickGallery,
   onRemoveImage,
   editingSubtask,
+  onUpdateLocation,
+  onRemoveLocation,
+  location,
   strings,
 }) => {
   if (!visible || !editingSubtask) {
@@ -249,6 +259,48 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
                 >
                   <Text style={{ color: colors.deleteButton }}>
                     ✖ {strings.removePhoto}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          <View style={{ marginTop: 16 }}>
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: "600",
+                color: colors.text,
+                marginBottom: 6,
+              }}
+            >
+              {strings.locationLabel}
+            </Text>
+            {location ? (
+              <Text style={{ color: colors.text, marginBottom: 8 }}>
+                {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+              </Text>
+            ) : (
+              <Text style={{ color: colors.placeholder, marginBottom: 8 }}>
+                {strings.noLocationSelected}
+              </Text>
+            )}
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+              <TouchableOpacity
+                onPress={onUpdateLocation}
+                style={{ marginRight: 12, marginBottom: 8 }}
+              >
+                <Text style={{ color: colors.addButton }}>
+                  📍 {strings.updateLocation}
+                </Text>
+              </TouchableOpacity>
+              {location && (
+                <TouchableOpacity
+                  onPress={onRemoveLocation}
+                  style={{ marginBottom: 8 }}
+                >
+                  <Text style={{ color: colors.deleteButton }}>
+                    ✖ {strings.removeLocation}
                   </Text>
                 </TouchableOpacity>
               )}
