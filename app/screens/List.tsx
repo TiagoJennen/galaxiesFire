@@ -2,7 +2,6 @@ import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
-  TextInput,
   FlatList,
   TouchableOpacity,
   Alert,
@@ -21,7 +20,6 @@ import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import { useNavigation, CommonActions } from "@react-navigation/native";
 import MapLibreGL, { Logger } from "@maplibre/maplibre-react-native";
-
 import { Region } from "react-native-maps";
 import * as Location from "expo-location";
 import {
@@ -49,6 +47,9 @@ import { saveTodosFirebase, loadTodosFirebase } from "./list/storage";
 import LocationModal from "./list/components/LocationModal";
 import SubtaskEditorModal from "./list/components/SubtaskEditorModal";
 import TaskEditorModal from "./list/components/TaskEditorModal";
+import ListHeaderControls from "./list/components/ListHeaderControls";
+import TaskCreator from "./list/components/TaskCreator";
+import InlineSubtaskEditor from "./list/components/InlineSubtaskEditor";
 
 // Onthoud de laatst gekozen lijstweergave zodat toggles (zoals thema) het niet resetten.
 let lastShowArchive = false;
@@ -1794,117 +1795,26 @@ const List: React.FC<ListScreenProps> = ({
   return (
     <View style={{ flex: 1, padding: 20, backgroundColor: colors.background }}>
       {/* Header met title, taal en thema toggles */}
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 20,
-        }}
-      >
-        <Text style={{ fontSize: 28, fontWeight: "bold", color: colors.text }}>
-          {showArchive
+      <ListHeaderControls
+        colors={colors}
+        showArchive={showArchive}
+        language={language}
+        theme={theme}
+        sortOrder={sortOrder}
+        prioritySort={prioritySort}
+        title={
+          showArchive
             ? translations[language].archive
-            : translations[language].tasks}
-        </Text>
-        <View style={{ flexDirection: "row" }}>
-          <TouchableOpacity
-            onPress={toggleLanguage}
-            style={{
-              padding: 8,
-              backgroundColor: colors.toggleButton,
-              borderRadius: 8,
-              marginRight: 5,
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "600" }}>
-              {language.toUpperCase()}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={toggleTheme}
-            style={{
-              padding: 8,
-              backgroundColor: colors.toggleButton,
-              borderRadius: 8,
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "600" }}>
-              {theme === "light" ? "🌙" : "☀️"}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Sorteer knop: wissel tussen laatst toegevoegd / eerst toegevoegd */}
-          <TouchableOpacity
-            onPress={toggleSortOrder}
-            style={{
-              padding: 8,
-              backgroundColor: colors.toggleButton,
-              borderRadius: 8,
-              marginLeft: 8,
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "600" }}>
-              {sortOrder === "oldest" ? "↓" : "↑"}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Prioriteit sorteer richting knop: hoog->laag of laag->hoog */}
-          <TouchableOpacity
-            onPress={togglePrioritySort}
-            style={{
-              padding: 8,
-              backgroundColor: colors.toggleButton,
-              borderRadius: 8,
-              marginLeft: 8,
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "600" }}>
-              {prioritySort === "highToLow" ? "P↓" : "P↑"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Tabs: Tasks / Archive */}
-      <View style={{ flexDirection: "row", marginBottom: 20 }}>
-        <TouchableOpacity
-          onPress={() => setShowArchive(false)}
-          style={{
-            flex: 1,
-            padding: 10,
-            backgroundColor: !showArchive
-              ? colors.addButton
-              : colors.toggleButton,
-            borderRadius: 8,
-            marginRight: 5,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ color: "#fff" }}>{translations[language].tasks}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setShowArchive(true)}
-          style={{
-            flex: 1,
-            padding: 10,
-            backgroundColor: showArchive
-              ? colors.addButton
-              : colors.toggleButton,
-            borderRadius: 8,
-            marginLeft: 5,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ color: "#fff" }}>
-            {translations[language].archive}
-          </Text>
-        </TouchableOpacity>
-      </View>
+            : translations[language].tasks
+        }
+        tasksLabel={translations[language].tasks}
+        archiveLabel={translations[language].archive}
+        onToggleLanguage={toggleLanguage}
+        onToggleTheme={toggleTheme}
+        onToggleSortOrder={toggleSortOrder}
+        onTogglePrioritySort={togglePrioritySort}
+        onSelectTab={(tab) => setShowArchive(tab === "archive")}
+      />
 
       <LocationModal
         visible={locationModalVisible}
@@ -1991,143 +1901,36 @@ const List: React.FC<ListScreenProps> = ({
       {!showArchive ? (
         <>
           {/* Formulier om taak toe te voegen + datum/tijd buttons */}
-          <View
-            style={{
-              flexDirection: "row",
-              marginBottom: 20,
-              alignItems: "center",
-            }}
-          >
-            <TextInput
-              placeholder={translations[language].addTask}
-              value={task}
-              onChangeText={setTask}
-              style={{
-                flex: 1,
-                padding: 10,
-                backgroundColor: colors.formBackground,
-                color: colors.text,
-                borderRadius: 8,
-              }}
-              placeholderTextColor={colors.placeholder}
-            />
-
-            {/* Prioriteit select (kleine knoppen) */}
-            <View style={{ flexDirection: "row", marginLeft: 8 }}>
-              <TouchableOpacity
-                onPress={() => setNewPriority("high")}
-                style={{
-                  padding: 8,
-                  borderRadius: 8,
-                  backgroundColor: newPriority === "high" ? "#ff6b6b" : "#444",
-                  marginRight: 4,
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "600" }}>H</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setNewPriority("medium")}
-                style={{
-                  padding: 8,
-                  borderRadius: 8,
-                  backgroundColor:
-                    newPriority === "medium" ? "#ffb366" : "#444",
-                  marginRight: 4,
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "600" }}>M</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setNewPriority("low")}
-                style={{
-                  padding: 8,
-                  borderRadius: 8,
-                  backgroundColor: newPriority === "low" ? "#6bc66b" : "#444",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "600" }}>L</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Datum picker button */}
-            <TouchableOpacity
-              onPress={openTaskDate}
-              style={{
-                marginLeft: 5,
-                padding: 10,
-                backgroundColor: "#6c757d",
-                borderRadius: 8,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: "#fff" }}>📅</Text>
-            </TouchableOpacity>
-
-            {/* Tijd picker button */}
-            <TouchableOpacity
-              onPress={openTaskTime}
-              style={{
-                marginLeft: 5,
-                padding: 10,
-                backgroundColor: "#6c757d",
-                borderRadius: 8,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: "#fff" }}>⏰</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => openLocationPicker()}
-              accessibilityLabel={
-                language === "nl" ? "Locatie instellen" : "Set location"
-              }
-              accessibilityHint={
+          <TaskCreator
+            colors={colors}
+            taskText={task}
+            onChangeTask={setTask}
+            priority={newPriority}
+            onSelectPriority={setNewPriority}
+            onOpenDate={openTaskDate}
+            onOpenTime={openTaskTime}
+            onOpenLocation={() => openLocationPicker()}
+            onAdd={addTodo}
+            placeholder={translations[language].addTask}
+            locationAccessibility={{
+              label: language === "nl" ? "Locatie instellen" : "Set location",
+              hint:
                 language === "nl"
                   ? "Open de kaart om een locatie te kiezen."
-                  : "Open the map to choose a location."
-              }
-              style={{
-                marginLeft: 5,
-                padding: 10,
-                backgroundColor: "#6c757d",
-                borderRadius: 8,
-                justifyContent: "center",
-                alignItems: "center",
+                  : "Open the map to choose a location.",
+            }}
+          />
+          {showTimePicker && Platform.OS !== "web" && (
+            <DateTimePicker
+              value={selectedTime || new Date()}
+              mode="time"
+              display="default"
+              onChange={(event: DateTimePickerEvent, time?: Date) => {
+                setShowTimePicker(false);
+                if (time) setSelectedTime(time);
               }}
-            >
-              <Text style={{ color: "#fff" }}>📍</Text>
-            </TouchableOpacity>
-
-            {/* Add knop */}
-            <TouchableOpacity
-              onPress={addTodo}
-              style={{
-                marginLeft: 5,
-                padding: 10,
-                backgroundColor: colors.addButton,
-                borderRadius: 8,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: "#fff" }}>+</Text>
-            </TouchableOpacity>
-
-            {/* Native time picker component (alleen niet-web) */}
-            {showTimePicker && Platform.OS !== "web" && (
-              <DateTimePicker
-                value={selectedTime || new Date()}
-                mode="time"
-                display="default"
-                onChange={(event: DateTimePickerEvent, time?: Date) => {
-                  setShowTimePicker(false);
-                  if (time) setSelectedTime(time);
-                }}
-              />
-            )}
-          </View>
+            />
+          )}
           {/* Native datepicker */}
           {showDatePicker && Platform.OS !== "web" && (
             <DateTimePicker
@@ -2630,151 +2433,34 @@ const List: React.FC<ListScreenProps> = ({
                       </TouchableOpacity>
 
                       {editingTodoIndex === originalIndex && (
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            marginTop: 5,
-                            marginLeft: 25,
-                            alignItems: "center",
-                          }}
-                        >
-                          <TextInput
-                            placeholder={translations[language].newSubtask}
-                            value={subtaskText}
-                            onChangeText={setSubtaskText}
-                            style={{
-                              flex: 1,
-                              padding: 8,
-                              backgroundColor: colors.formBackground,
-                              color: colors.text,
-                              borderRadius: 8,
-                            }}
-                            placeholderTextColor={colors.placeholder}
-                          />
-                          <View style={{ flexDirection: "row", marginLeft: 5 }}>
-                            <TouchableOpacity
-                              onPress={() => setNewSubtaskPriority("high")}
-                              style={{
-                                padding: 6,
-                                borderRadius: 8,
-                                backgroundColor:
-                                  newSubtaskPriority === "high"
-                                    ? "#ff6b6b"
-                                    : "#444",
-                                marginRight: 4,
-                              }}
-                            >
-                              <Text
-                                style={{ color: "#fff", fontWeight: "600" }}
-                              >
-                                H
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => setNewSubtaskPriority("medium")}
-                              style={{
-                                padding: 6,
-                                borderRadius: 8,
-                                backgroundColor:
-                                  newSubtaskPriority === "medium"
-                                    ? "#ffb366"
-                                    : "#444",
-                                marginRight: 4,
-                              }}
-                            >
-                              <Text
-                                style={{ color: "#fff", fontWeight: "600" }}
-                              >
-                                M
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => setNewSubtaskPriority("low")}
-                              style={{
-                                padding: 6,
-                                borderRadius: 8,
-                                backgroundColor:
-                                  newSubtaskPriority === "low"
-                                    ? "#6bc66b"
-                                    : "#444",
-                              }}
-                            >
-                              <Text
-                                style={{ color: "#fff", fontWeight: "600" }}
-                              >
-                                L
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                          <TouchableOpacity
-                            onPress={openSubtaskDate}
-                            style={{
-                              marginLeft: 5,
-                              padding: 8,
-                              backgroundColor: "#6c757d",
-                              borderRadius: 8,
-                              justifyContent: "center",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Text style={{ color: "#fff" }}>📅</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={openSubtaskTime}
-                            style={{
-                              marginLeft: 5,
-                              padding: 8,
-                              backgroundColor: "#6c757d",
-                              borderRadius: 8,
-                              justifyContent: "center",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Text style={{ color: "#fff" }}>⏰</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() =>
-                              openLocationPicker(
-                                originalIndex,
-                                "active",
-                                NEW_SUBTASK_LOCATION_INDEX
-                              )
-                            }
-                            accessibilityLabel={
+                        <InlineSubtaskEditor
+                          text={subtaskText}
+                          onChangeText={setSubtaskText}
+                          priority={newSubtaskPriority}
+                          onSelectPriority={setNewSubtaskPriority}
+                          onOpenDate={openSubtaskDate}
+                          onOpenTime={openSubtaskTime}
+                          onOpenLocation={() =>
+                            openLocationPicker(
+                              originalIndex,
+                              "active",
+                              NEW_SUBTASK_LOCATION_INDEX
+                            )
+                          }
+                          onAdd={() => addSubtask(originalIndex)}
+                          colors={colors}
+                          placeholder={translations[language].newSubtask}
+                          accessibilityLabels={{
+                            locationLabel:
                               language === "nl"
                                 ? "Locatie voor subtaak instellen"
-                                : "Set subtask location"
-                            }
-                            accessibilityHint={
+                                : "Set subtask location",
+                            locationHint:
                               language === "nl"
                                 ? "Open de kaart om een locatie voor deze subtaak te kiezen."
-                                : "Open the map to choose a location for this subtask."
-                            }
-                            style={{
-                              marginLeft: 5,
-                              padding: 8,
-                              backgroundColor: "#6c757d",
-                              borderRadius: 8,
-                              justifyContent: "center",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Text style={{ color: "#fff" }}>📍</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => addSubtask(originalIndex)}
-                            style={{
-                              marginLeft: 5,
-                              padding: 8,
-                              backgroundColor: colors.addButton,
-                              borderRadius: 8,
-                              justifyContent: "center",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Text style={{ color: "#fff" }}>+</Text>
-                          </TouchableOpacity>
-                        </View>
+                                : "Open the map to choose a location for this subtask.",
+                          }}
+                        />
                       )}
                     </View>
                   );
