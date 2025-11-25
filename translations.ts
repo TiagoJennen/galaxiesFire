@@ -40,6 +40,8 @@ export const translations = {
     subtaskName: "Naam subtaak",
     subtaskNameRequired: "Vul een subtaaknaam in.",
     locationLabel: "Locatie",
+    locationLoading: "Adres laden...",
+    locationUnavailable: "Adres niet beschikbaar",
     locationRequired: "Stel eerst een locatie in voor deze taak.",
     locationPermissionDeniedTitle: "Locatie geweigerd",
     locationPermissionDeniedMessage:
@@ -96,6 +98,8 @@ export const translations = {
     subtaskName: "Subtask name",
     subtaskNameRequired: "Please enter a subtask name.",
     locationLabel: "Location",
+    locationLoading: "Loading address...",
+    locationUnavailable: "Address unavailable",
     locationRequired: "Please set a location for this task first.",
     locationPermissionDeniedTitle: "Location denied",
     locationPermissionDeniedMessage:

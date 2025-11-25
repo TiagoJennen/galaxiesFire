@@ -56,6 +56,7 @@ type SubtaskEditorModalProps = {
   onUpdateLocation: () => void;
   onRemoveLocation: () => void;
   location: LatLng | null;
+  locationDescription?: string;
   strings: SubtaskStrings;
 };
 
@@ -84,6 +85,7 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
   onUpdateLocation,
   onRemoveLocation,
   location,
+  locationDescription = "",
   strings,
 }) => {
   if (!visible || !editingSubtask) {
@@ -278,7 +280,7 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
             </Text>
             {location ? (
               <Text style={{ color: colors.text, marginBottom: 8 }}>
-                {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+                {locationDescription || strings.noLocationSelected}
               </Text>
             ) : (
               <Text style={{ color: colors.placeholder, marginBottom: 8 }}>

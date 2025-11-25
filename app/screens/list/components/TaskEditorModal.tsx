@@ -54,6 +54,7 @@ type TaskEditorModalProps = {
   editingTodo: Todo | null;
   onUpdateLocation: () => void;
   onRemoveLocation: () => void;
+  locationDescription?: string;
   strings: TaskStrings;
 };
 
@@ -80,6 +81,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
   editingTodo,
   onUpdateLocation,
   onRemoveLocation,
+  locationDescription = "",
   strings,
 }) => {
   if (!visible || !editingTodo) {
@@ -276,7 +278,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
             </Text>
             {location ? (
               <Text style={{ color: colors.text, marginBottom: 8 }}>
-                {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+                {locationDescription || strings.noLocationSelected}
               </Text>
             ) : (
               <Text style={{ color: colors.placeholder, marginBottom: 8 }}>

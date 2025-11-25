@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,10 +8,10 @@ import {
   Image,
   Platform,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
+import { Ionicons } from "@expo/vector-icons";
 import { FIREBASE_AUTH } from "../../FirebaseConfig";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -54,6 +54,9 @@ import InlineSubtaskEditor from "./list/components/InlineSubtaskEditor";
 // Onthoud de laatst gekozen lijstweergave zodat toggles (zoals thema) het niet resetten.
 let lastShowArchive = false;
 const NEW_SUBTASK_LOCATION_INDEX = -1;
+
+const makeLocationKey = (location: LatLng) =>
+  `${location.latitude.toFixed(6)}:${location.longitude.toFixed(6)}`;
 
 // Hoofdfunctie van het scherm: toont takenlijst, formulieren en archive
 const List: React.FC<ListScreenProps> = ({
@@ -139,8 +142,26 @@ const List: React.FC<ListScreenProps> = ({
     useState(false);
   const [subtaskEditorSource, setSubtaskEditorSource] =
     useState<ListSource>("active");
+  const [editingTodoSource, setEditingTodoSource] =
+    useState<ListSource>("active");
+  const [selectedLocationDescription, setSelectedLocationDescription] =
+    useState<string | null>(null);
+  const [newSubtaskLocationDescription, setNewSubtaskLocationDescription] =
+    useState<string | null>(null);
+  const processedLocationIdsRef = useRef<Set<string>>(new Set());
+  const inflightLocationKeysRef = useRef<Set<string>>(new Set());
+  const todosRef = useRef<Todo[]>([]);
+  const archivedTodosRef = useRef<Todo[]>([]);
 
   const colors = buildThemeColors(theme);
+
+  useEffect(() => {
+    todosRef.current = todos;
+  }, [todos]);
+
+  useEffect(() => {
+    archivedTodosRef.current = archivedTodos;
+  }, [archivedTodos]);
 
   const toggleSortOrder = () =>
     setSortOrder((current) => (current === "oldest" ? "newest" : "oldest"));
@@ -161,6 +182,75 @@ const List: React.FC<ListScreenProps> = ({
     if (priority === "low") return "#6bc66b";
     return "#6c757d";
   };
+
+  const composeAddressString = useCallback(
+    (result: Location.LocationGeocodedAddress | undefined) => {
+      if (!result) {
+        return null;
+      }
+      const streetName = result.street ?? null;
+      const streetNumber = result.streetNumber ?? null;
+      const streetSegmentRaw = streetName
+        ? [streetName, streetNumber].filter(Boolean).join(" ")
+        : null;
+      const streetSegment = streetSegmentRaw?.trim().length
+        ? streetSegmentRaw.trim()
+        : (result.name?.trim() ?? null);
+      const citySegment =
+        result.city ??
+        result.subregion ??
+        result.district ??
+        result.region ??
+        null;
+      const countrySegment = result.country ?? null;
+      const parts = [streetSegment, citySegment, countrySegment]
+        .filter((part) => part && part.toString().trim().length > 0)
+        .map((part) => part!.toString().trim());
+      if (!parts.length) {
+        return null;
+      }
+      return parts.join(", ");
+    },
+    []
+  );
+
+  const reverseGeocodeToDescription = useCallback(
+    async (location: LatLng | null) => {
+      if (!location) {
+        return null;
+      }
+      if (Platform.OS === "web") {
+        return `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
+      }
+      try {
+        const results = await Location.reverseGeocodeAsync({
+          latitude: location.latitude,
+          longitude: location.longitude,
+        });
+        return composeAddressString(results[0]);
+      } catch (error) {
+        console.log("Reverse geocode failed:", error);
+        return null;
+      }
+    },
+    [composeAddressString]
+  );
+
+  const getLocationDisplay = useCallback(
+    (location: LatLng | null | undefined, description?: string | null) => {
+      if (!location) {
+        return "";
+      }
+      if (description && description.trim().length) {
+        return description.trim();
+      }
+      const key = makeLocationKey(location);
+      return inflightLocationKeysRef.current.has(key)
+        ? translations[language].locationLoading
+        : translations[language].locationUnavailable;
+    },
+    [language]
+  );
 
   const buildDisplayList = (list: Todo[]) =>
     list
@@ -357,6 +447,127 @@ const List: React.FC<ListScreenProps> = ({
     }
   };
 
+  useEffect(() => {
+    const candidates: Array<{
+      id: string;
+      key: string;
+      location: LatLng;
+      apply: (description: string | null) => void;
+    }> = [];
+
+    const registerTodo = (source: ListSource, index: number, entry: Todo) => {
+      if (entry.location && !entry.locationDescription) {
+        const location = entry.location;
+        const id = `${source}-todo-${index}-${makeLocationKey(location)}`;
+        candidates.push({
+          id,
+          key: makeLocationKey(location),
+          location,
+          apply: (description: string | null) => {
+            const latestTodos = [...todosRef.current];
+            const latestArchived = [...archivedTodosRef.current];
+            const targetList =
+              source === "archive" ? latestArchived : latestTodos;
+            const current = targetList[index];
+            if (!current || !current.location) {
+              return;
+            }
+            if (
+              makeLocationKey(current.location) !== makeLocationKey(location)
+            ) {
+              return;
+            }
+            if (
+              (current.locationDescription ?? null) === (description ?? null)
+            ) {
+              return;
+            }
+            targetList[index] = {
+              ...current,
+              locationDescription: description ?? null,
+            };
+            saveAll(latestTodos, latestArchived);
+          },
+        });
+      }
+      entry.subtasks.forEach((sub, subIndex) => {
+        if (sub.location && !sub.locationDescription) {
+          const location = sub.location;
+          const id = `${source}-sub-${index}-${subIndex}-${makeLocationKey(location)}`;
+          candidates.push({
+            id,
+            key: makeLocationKey(location),
+            location,
+            apply: (description: string | null) => {
+              const latestTodos = [...todosRef.current];
+              const latestArchived = [...archivedTodosRef.current];
+              const targetList =
+                source === "archive" ? latestArchived : latestTodos;
+              const current = targetList[index];
+              const currentSub = current?.subtasks[subIndex];
+              if (!current || !currentSub || !currentSub.location) {
+                return;
+              }
+              if (
+                makeLocationKey(currentSub.location) !==
+                makeLocationKey(location)
+              ) {
+                return;
+              }
+              if (
+                (currentSub.locationDescription ?? null) ===
+                (description ?? null)
+              ) {
+                return;
+              }
+              const updatedSubtasks = [...current.subtasks];
+              updatedSubtasks[subIndex] = {
+                ...currentSub,
+                locationDescription: description ?? null,
+              };
+              targetList[index] = {
+                ...current,
+                subtasks: updatedSubtasks,
+              };
+              saveAll(latestTodos, latestArchived);
+            },
+          });
+        }
+      });
+    };
+
+    todos.forEach((todo, index) => registerTodo("active", index, todo));
+    archivedTodos.forEach((todo, index) =>
+      registerTodo("archive", index, todo)
+    );
+
+    const next = candidates.find(
+      (candidate) =>
+        !processedLocationIdsRef.current.has(candidate.id) &&
+        !inflightLocationKeysRef.current.has(candidate.key)
+    );
+    if (!next) {
+      return;
+    }
+
+    processedLocationIdsRef.current.add(next.id);
+    inflightLocationKeysRef.current.add(next.key);
+
+    let cancelled = false;
+
+    (async () => {
+      const description = await reverseGeocodeToDescription(next.location);
+      inflightLocationKeysRef.current.delete(next.key);
+      if (!cancelled) {
+        next.apply(description ?? null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [todos, archivedTodos, reverseGeocodeToDescription, saveAll]);
+
   // Toon bevestigingsdialoog voordat iets verwijderd wordt
   const confirmDelete = (
     title: string,
@@ -400,7 +611,7 @@ const List: React.FC<ListScreenProps> = ({
   };
 
   // Voeg een nieuwe taak toe met optionele deadline/tijd
-  const addTodo = () => {
+  const addTodo = (target: ListSource = "active") => {
     if (!task.trim()) {
       showInputWarning(
         language === "nl" ? "Vul een taak in." : "Please enter a task."
@@ -419,12 +630,18 @@ const List: React.FC<ListScreenProps> = ({
       createdAt: new Date().toISOString(),
       priority: newPriority,
       location: selectedLocation,
+      locationDescription: selectedLocationDescription,
     };
-    saveAll([...todos, newTodo], archivedTodos);
+    if (target === "archive") {
+      saveAll(todos, [...archivedTodos, newTodo]);
+    } else {
+      saveAll([...todos, newTodo], archivedTodos);
+    }
     setTask("");
     setSelectedDate(null);
     setSelectedTime(null);
     setSelectedLocation(null);
+    setSelectedLocationDescription(null);
     setMapRegion(null);
   };
 
@@ -568,15 +785,23 @@ const List: React.FC<ListScreenProps> = ({
     const updatedArchived = [...archivedTodos];
     if (source === "archive") {
       if (!updatedArchived[index]) return;
-      updatedArchived[index] = { ...updatedArchived[index], location: null };
+      updatedArchived[index] = {
+        ...updatedArchived[index],
+        location: null,
+        locationDescription: null,
+      };
     } else {
       if (!updatedTodos[index]) return;
-      updatedTodos[index] = { ...updatedTodos[index], location: null };
+      updatedTodos[index] = {
+        ...updatedTodos[index],
+        location: null,
+        locationDescription: null,
+      };
     }
     saveAll(updatedTodos, updatedArchived);
     if (taskEditorIndex === index && taskEditorSource === source) {
       setTaskEditorSnapshot((prev) =>
-        prev ? { ...prev, location: null } : prev
+        prev ? { ...prev, location: null, locationDescription: null } : prev
       );
     }
   };
@@ -585,7 +810,8 @@ const List: React.FC<ListScreenProps> = ({
     parentIndex: number,
     subIndex: number,
     location: LatLng | null,
-    source: ListSource = "active"
+    source: ListSource = "active",
+    description?: string | null
   ) => {
     const updatedTodos = [...todos];
     const updatedArchived = [...archivedTodos];
@@ -593,9 +819,14 @@ const List: React.FC<ListScreenProps> = ({
     const parent = targetList[parentIndex];
     if (!parent || !parent.subtasks[subIndex]) return;
     const updatedSubtasks = [...parent.subtasks];
+    const nextDescription =
+      description === undefined
+        ? (updatedSubtasks[subIndex].locationDescription ?? null)
+        : description;
     updatedSubtasks[subIndex] = {
       ...updatedSubtasks[subIndex],
       location,
+      locationDescription: nextDescription,
     };
     targetList[parentIndex] = {
       ...parent,
@@ -820,7 +1051,7 @@ const List: React.FC<ListScreenProps> = ({
   };
 
   // Voeg subtask toe aan bestaande taak (met optionele deadline/tijd)
-  const addSubtask = (todoIndex: number) => {
+  const addSubtask = (todoIndex: number, source: ListSource = "active") => {
     if (!subtaskText.trim()) {
       showInputWarning(
         language === "nl" ? "Vul een subtaak in." : "Please enter a subtask."
@@ -831,21 +1062,41 @@ const List: React.FC<ListScreenProps> = ({
     const finalDate = combineDateAndTime(subtaskDate, subtaskTime);
 
     const updatedTodos = [...todos];
-    updatedTodos[todoIndex].subtasks.push({
-      text: subtaskText,
-      done: false,
-      deadline: finalDate,
-      image: null,
-      createdAt: new Date().toISOString(),
-      priority: newSubtaskPriority,
-      location: newSubtaskLocation,
-    });
-    saveAll(updatedTodos, archivedTodos);
+    const updatedArchived = [...archivedTodos];
+    const targetList = source === "archive" ? updatedArchived : updatedTodos;
+    const parent = targetList[todoIndex];
+    if (!parent) {
+      showInputWarning(
+        language === "nl"
+          ? "Kon de hoofdtaak niet vinden."
+          : "Could not find the parent task."
+      );
+      return;
+    }
+    const updatedSubtasks = [
+      ...parent.subtasks,
+      {
+        text: subtaskText,
+        done: false,
+        deadline: finalDate,
+        image: null,
+        createdAt: new Date().toISOString(),
+        priority: newSubtaskPriority,
+        location: newSubtaskLocation,
+        locationDescription: newSubtaskLocationDescription,
+      },
+    ];
+    targetList[todoIndex] = {
+      ...parent,
+      subtasks: updatedSubtasks,
+    };
+    saveAll(updatedTodos, updatedArchived);
     setSubtaskText("");
     setSubtaskDate(null);
     setSubtaskTime(null);
     setNewSubtaskPriority("medium");
     setNewSubtaskLocation(null);
+    setNewSubtaskLocationDescription(null);
     setEditingTodoIndex(null);
   };
 
@@ -1051,6 +1302,7 @@ const List: React.FC<ListScreenProps> = ({
     const editingIndex = typeof todoIndex === "number" ? todoIndex : null;
     const sourceList = source === "archive" ? archivedTodos : todos;
     let seededLocation: LatLng | null = null;
+    let seededDescription: string | null = null;
     let seededRegion: Region = { ...DEFAULT_REGION };
 
     if (editingIndex !== null) {
@@ -1058,17 +1310,21 @@ const List: React.FC<ListScreenProps> = ({
         if (subtaskIndex === NEW_SUBTASK_LOCATION_INDEX) {
           if (newSubtaskLocation) {
             seededLocation = { ...newSubtaskLocation };
+            seededDescription = newSubtaskLocationDescription ?? null;
           }
         } else {
           const existingSub = sourceList[editingIndex]?.subtasks[subtaskIndex];
           if (existingSub?.location) {
             seededLocation = { ...existingSub.location };
+            seededDescription = existingSub.locationDescription ?? null;
           }
         }
       } else {
         const existing = sourceList[editingIndex]?.location;
         if (existing) {
           seededLocation = { ...existing };
+          seededDescription =
+            sourceList[editingIndex]?.locationDescription ?? null;
         }
       }
     }
@@ -1078,6 +1334,7 @@ const List: React.FC<ListScreenProps> = ({
         latitude: selectedLocation.latitude,
         longitude: selectedLocation.longitude,
       };
+      seededDescription = selectedLocationDescription;
     } else if (!seededLocation && mapRegion) {
       seededLocation = {
         latitude: mapRegion.latitude,
@@ -1177,6 +1434,7 @@ const List: React.FC<ListScreenProps> = ({
             }
         );
       }
+      setSelectedLocationDescription(seededDescription ?? null);
     } catch (err) {
       console.log("Locatie ophalen mislukt:", err);
       const fallbackRegion = workingLocation
@@ -1189,6 +1447,7 @@ const List: React.FC<ListScreenProps> = ({
         : { ...DEFAULT_REGION };
       setMapRegion(fallbackRegion);
       setSelectedLocation(workingLocation ? { ...workingLocation } : null);
+      setSelectedLocationDescription(seededDescription ?? null);
       setLocationHelperMessage(
         language === "nl"
           ? "Locatie ophalen mislukt."
@@ -1198,7 +1457,7 @@ const List: React.FC<ListScreenProps> = ({
       setLocationLoading(false);
     }
   };
-  const confirmLocationSelection = () => {
+  const confirmLocationSelection = async () => {
     setLocationModalVisible(false);
     setLocationHelperMessage(null);
     setLocationLoading(false);
@@ -1208,20 +1467,31 @@ const List: React.FC<ListScreenProps> = ({
           longitude: selectedLocation.longitude,
         }
       : null;
+    const key = resolvedLocation ? makeLocationKey(resolvedLocation) : null;
+    if (key) {
+      inflightLocationKeysRef.current.add(key);
+    }
+    const description = await reverseGeocodeToDescription(resolvedLocation);
+    if (key) {
+      inflightLocationKeysRef.current.delete(key);
+    }
     const editingIndex = editingLocationTodoIndex;
     const subIndex = editingLocationSubtaskIndex;
     if (editingIndex !== null && subIndex !== null) {
       if (subIndex === NEW_SUBTASK_LOCATION_INDEX) {
         setNewSubtaskLocation(resolvedLocation);
+        setNewSubtaskLocationDescription(description ?? null);
       } else {
         updateSubtaskLocation(
           editingIndex,
           subIndex,
           resolvedLocation,
-          editingLocationSource
+          editingLocationSource,
+          description ?? null
         );
       }
       setSelectedLocation(null);
+      setSelectedLocationDescription(null);
       setMapRegion(null);
     } else if (editingIndex !== null) {
       const updatedTodos = [...todos];
@@ -1231,12 +1501,14 @@ const List: React.FC<ListScreenProps> = ({
           updatedArchived[editingIndex] = {
             ...updatedArchived[editingIndex],
             location: resolvedLocation,
+            locationDescription: description ?? null,
           };
         }
       } else if (updatedTodos[editingIndex]) {
         updatedTodos[editingIndex] = {
           ...updatedTodos[editingIndex],
           location: resolvedLocation,
+          locationDescription: description ?? null,
         };
       }
       saveAll(updatedTodos, updatedArchived);
@@ -1245,11 +1517,31 @@ const List: React.FC<ListScreenProps> = ({
         editingLocationSource === taskEditorSource
       ) {
         setTaskEditorSnapshot((prev) =>
-          prev ? { ...prev, location: resolvedLocation } : prev
+          prev
+            ? {
+                ...prev,
+                location: resolvedLocation,
+                locationDescription: description ?? null,
+              }
+            : prev
         );
       }
       setSelectedLocation(null);
+      setSelectedLocationDescription(null);
       setMapRegion(null);
+    } else {
+      setSelectedLocation(resolvedLocation);
+      setSelectedLocationDescription(description ?? null);
+      if (resolvedLocation) {
+        setMapRegion({
+          latitude: resolvedLocation.latitude,
+          longitude: resolvedLocation.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        });
+      } else {
+        setMapRegion(null);
+      }
     }
     setEditingLocationTodoIndex(null);
     setEditingLocationSubtaskIndex(null);
@@ -1258,6 +1550,7 @@ const List: React.FC<ListScreenProps> = ({
   };
   const clearLocationSelection = () => {
     setSelectedLocation(null);
+    setSelectedLocationDescription(null);
     setMapRegion(DEFAULT_REGION);
     setLocationHelperMessage(null);
     setLocationLoading(false);
@@ -1309,7 +1602,10 @@ const List: React.FC<ListScreenProps> = ({
       setLocationLoading(false);
     }
   };
-  const openArchivedLocation = (location: LatLng) => {
+  const openArchivedLocation = (
+    location: LatLng,
+    description?: string | null
+  ) => {
     if (Platform.OS === "web") {
       showInputWarning(
         language === "nl"
@@ -1321,6 +1617,7 @@ const List: React.FC<ListScreenProps> = ({
     setEditingLocationTodoIndex(null);
     setEditingLocationSubtaskIndex(null);
     setSelectedLocation({ ...location });
+    setSelectedLocationDescription(description ?? null);
     setMapRegion({
       latitude: location.latitude,
       longitude: location.longitude,
@@ -1334,6 +1631,7 @@ const List: React.FC<ListScreenProps> = ({
   };
   const updateSelectedLocation = (coord: LatLng) => {
     setSelectedLocation(coord);
+    setSelectedLocationDescription(null);
     setMapRegion((prev) =>
       prev
         ? { ...prev, latitude: coord.latitude, longitude: coord.longitude }
@@ -1669,6 +1967,18 @@ const List: React.FC<ListScreenProps> = ({
   const subtaskEditorDeadlineDisplay = subtaskEditorDeadlinePreview
     ? formatDate(subtaskEditorDeadlinePreview)
     : "";
+  const editingTodoLocationDescription = editingTodo?.location
+    ? getLocationDisplay(
+        editingTodo.location,
+        editingTodo.locationDescription ?? null
+      )
+    : "";
+  const editingSubtaskLocationDescription = editingSubtask?.location
+    ? getLocationDisplay(
+        editingSubtask.location,
+        editingSubtask.locationDescription ?? null
+      )
+    : "";
   const subtaskModalStrings = {
     editSubtask: translations[language].editSubtask,
     subtaskName: translations[language].subtaskName,
@@ -1742,7 +2052,8 @@ const List: React.FC<ListScreenProps> = ({
       subtaskEditorParentIndex,
       subtaskEditorIndex,
       null,
-      subtaskEditorSource
+      subtaskEditorSource,
+      null
     );
     setSelectedLocation(null);
     setMapRegion(null);
@@ -1869,6 +2180,7 @@ const List: React.FC<ListScreenProps> = ({
         onUpdateLocation={handleSubtaskEditorUpdateLocation}
         onRemoveLocation={handleSubtaskEditorRemoveLocation}
         location={editingSubtask?.location ?? null}
+        locationDescription={editingSubtaskLocationDescription}
         strings={subtaskModalStrings}
       />
       <TaskEditorModal
@@ -1894,6 +2206,7 @@ const List: React.FC<ListScreenProps> = ({
         editingTodo={editingTodo}
         onUpdateLocation={handleTaskEditorUpdateLocation}
         onRemoveLocation={handleTaskEditorRemoveLocation}
+        locationDescription={editingTodoLocationDescription}
         strings={taskModalStrings}
       />
 
@@ -2097,8 +2410,10 @@ const List: React.FC<ListScreenProps> = ({
                                 }}
                               >
                                 {translations[language].locationLabel}:{" "}
-                                {item.location.latitude.toFixed(4)},{" "}
-                                {item.location.longitude.toFixed(4)}
+                                {getLocationDisplay(
+                                  item.location,
+                                  item.locationDescription ?? null
+                                )}
                               </Text>
                             </TouchableOpacity>
                           )}
@@ -2317,8 +2632,10 @@ const List: React.FC<ListScreenProps> = ({
                                       }}
                                     >
                                       {translations[language].locationLabel}:{" "}
-                                      {sub.location.latitude.toFixed(4)},{" "}
-                                      {sub.location.longitude.toFixed(4)}
+                                      {getLocationDisplay(
+                                        sub.location,
+                                        sub.locationDescription ?? null
+                                      )}
                                     </Text>
                                   </TouchableOpacity>
                                 )}
@@ -2423,7 +2740,13 @@ const List: React.FC<ListScreenProps> = ({
                       <TouchableOpacity
                         onPress={() => {
                           setEditingTodoIndex(originalIndex);
+                          setEditingTodoSource("active");
+                          setSubtaskText("");
+                          setSubtaskDate(null);
+                          setSubtaskTime(null);
+                          setNewSubtaskPriority("medium");
                           setNewSubtaskLocation(null);
+                          setNewSubtaskLocationDescription(null);
                         }}
                         style={{ marginTop: 5 }}
                       >
@@ -2432,36 +2755,37 @@ const List: React.FC<ListScreenProps> = ({
                         </Text>
                       </TouchableOpacity>
 
-                      {editingTodoIndex === originalIndex && (
-                        <InlineSubtaskEditor
-                          text={subtaskText}
-                          onChangeText={setSubtaskText}
-                          priority={newSubtaskPriority}
-                          onSelectPriority={setNewSubtaskPriority}
-                          onOpenDate={openSubtaskDate}
-                          onOpenTime={openSubtaskTime}
-                          onOpenLocation={() =>
-                            openLocationPicker(
-                              originalIndex,
-                              "active",
-                              NEW_SUBTASK_LOCATION_INDEX
-                            )
-                          }
-                          onAdd={() => addSubtask(originalIndex)}
-                          colors={colors}
-                          placeholder={translations[language].newSubtask}
-                          accessibilityLabels={{
-                            locationLabel:
-                              language === "nl"
-                                ? "Locatie voor subtaak instellen"
-                                : "Set subtask location",
-                            locationHint:
-                              language === "nl"
-                                ? "Open de kaart om een locatie voor deze subtaak te kiezen."
-                                : "Open the map to choose a location for this subtask.",
-                          }}
-                        />
-                      )}
+                      {editingTodoIndex === originalIndex &&
+                        editingTodoSource === "active" && (
+                          <InlineSubtaskEditor
+                            text={subtaskText}
+                            onChangeText={setSubtaskText}
+                            priority={newSubtaskPriority}
+                            onSelectPriority={setNewSubtaskPriority}
+                            onOpenDate={openSubtaskDate}
+                            onOpenTime={openSubtaskTime}
+                            onOpenLocation={() =>
+                              openLocationPicker(
+                                originalIndex,
+                                "active",
+                                NEW_SUBTASK_LOCATION_INDEX
+                              )
+                            }
+                            onAdd={() => addSubtask(originalIndex)}
+                            colors={colors}
+                            placeholder={translations[language].newSubtask}
+                            accessibilityLabels={{
+                              locationLabel:
+                                language === "nl"
+                                  ? "Locatie voor subtaak instellen"
+                                  : "Set subtask location",
+                              locationHint:
+                                language === "nl"
+                                  ? "Open de kaart om een locatie voor deze subtaak te kiezen."
+                                  : "Open the map to choose a location for this subtask.",
+                            }}
+                          />
+                        )}
                     </View>
                   );
                 }}
@@ -2471,6 +2795,74 @@ const List: React.FC<ListScreenProps> = ({
         </>
       ) : (
         <>
+          <TaskCreator
+            colors={colors}
+            taskText={task}
+            onChangeTask={setTask}
+            priority={newPriority}
+            onSelectPriority={setNewPriority}
+            onOpenDate={openTaskDate}
+            onOpenTime={openTaskTime}
+            onOpenLocation={() => openLocationPicker(undefined, "archive")}
+            onAdd={() => addTodo("archive")}
+            placeholder={translations[language].addTask}
+            locationAccessibility={{
+              label: language === "nl" ? "Locatie instellen" : "Set location",
+              hint:
+                language === "nl"
+                  ? "Open de kaart om een locatie te kiezen."
+                  : "Open the map to choose a location.",
+            }}
+          />
+
+          {showTimePicker && Platform.OS !== "web" && (
+            <DateTimePicker
+              value={selectedTime || new Date()}
+              mode="time"
+              display="default"
+              onChange={(event: DateTimePickerEvent, time?: Date) => {
+                setShowTimePicker(false);
+                if (time) setSelectedTime(time);
+              }}
+            />
+          )}
+
+          {showDatePicker && Platform.OS !== "web" && (
+            <DateTimePicker
+              value={selectedDate || new Date()}
+              mode="date"
+              display="default"
+              onChange={(event: DateTimePickerEvent, date?: Date) => {
+                setShowDatePicker(false);
+                if (date) setSelectedDate(date);
+              }}
+            />
+          )}
+
+          {showSubtaskDatePicker && Platform.OS !== "web" && (
+            <DateTimePicker
+              value={subtaskDate || new Date()}
+              mode="date"
+              display="default"
+              onChange={(event: DateTimePickerEvent, date?: Date) => {
+                setShowSubtaskDatePicker(false);
+                if (date) setSubtaskDate(date);
+              }}
+            />
+          )}
+
+          {showSubtaskTimePicker && Platform.OS !== "web" && (
+            <DateTimePicker
+              value={subtaskTime || new Date()}
+              mode="time"
+              display="default"
+              onChange={(event: DateTimePickerEvent, time?: Date) => {
+                setShowSubtaskTimePicker(false);
+                if (time) setSubtaskTime(time);
+              }}
+            />
+          )}
+
           {/* Archive weergave: gebruikzelfde display-sortering (priority + createdAt) */}
           {(() => {
             const displayArchived = buildDisplayList(archivedTodos);
@@ -2586,7 +2978,10 @@ const List: React.FC<ListScreenProps> = ({
                             {item.location && (
                               <TouchableOpacity
                                 onPress={() =>
-                                  openArchivedLocation(item.location!)
+                                  openArchivedLocation(
+                                    item.location!,
+                                    item.locationDescription ?? null
+                                  )
                                 }
                                 accessibilityRole="button"
                                 accessibilityHint={
@@ -2607,8 +3002,10 @@ const List: React.FC<ListScreenProps> = ({
                                   }}
                                 >
                                   {translations[language].locationLabel}:{" "}
-                                  {item.location.latitude.toFixed(4)},{" "}
-                                  {item.location.longitude.toFixed(4)}
+                                  {getLocationDisplay(
+                                    item.location,
+                                    item.locationDescription ?? null
+                                  )}
                                 </Text>
                               </TouchableOpacity>
                             )}
@@ -2852,8 +3249,10 @@ const List: React.FC<ListScreenProps> = ({
                                       }}
                                     >
                                       {translations[language].locationLabel}:{" "}
-                                      {sub.location.latitude.toFixed(4)},{" "}
-                                      {sub.location.longitude.toFixed(4)}
+                                      {getLocationDisplay(
+                                        sub.location,
+                                        sub.locationDescription ?? null
+                                      )}
                                     </Text>
                                   </TouchableOpacity>
                                 )}
@@ -2970,6 +3369,58 @@ const List: React.FC<ListScreenProps> = ({
                           );
                         })}
                       </View>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          setEditingTodoIndex(originalArchiveIndex);
+                          setEditingTodoSource("archive");
+                          setSubtaskText("");
+                          setSubtaskDate(null);
+                          setSubtaskTime(null);
+                          setNewSubtaskPriority("medium");
+                          setNewSubtaskLocation(null);
+                          setNewSubtaskLocationDescription(null);
+                        }}
+                        style={{ marginTop: 5 }}
+                      >
+                        <Text style={{ color: colors.addButton }}>
+                          + {translations[language].addSubtask}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {editingTodoIndex === originalArchiveIndex &&
+                        editingTodoSource === "archive" && (
+                          <InlineSubtaskEditor
+                            text={subtaskText}
+                            onChangeText={setSubtaskText}
+                            priority={newSubtaskPriority}
+                            onSelectPriority={setNewSubtaskPriority}
+                            onOpenDate={openSubtaskDate}
+                            onOpenTime={openSubtaskTime}
+                            onOpenLocation={() =>
+                              openLocationPicker(
+                                originalArchiveIndex,
+                                "archive",
+                                NEW_SUBTASK_LOCATION_INDEX
+                              )
+                            }
+                            onAdd={() =>
+                              addSubtask(originalArchiveIndex, "archive")
+                            }
+                            colors={colors}
+                            placeholder={translations[language].newSubtask}
+                            accessibilityLabels={{
+                              locationLabel:
+                                language === "nl"
+                                  ? "Locatie voor subtaak instellen"
+                                  : "Set subtask location",
+                              locationHint:
+                                language === "nl"
+                                  ? "Open de kaart om een locatie voor deze subtaak te kiezen."
+                                  : "Open the map to choose a location for this subtask.",
+                            }}
+                          />
+                        )}
                     </View>
                   );
                 }}

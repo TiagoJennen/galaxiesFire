@@ -13,6 +13,7 @@ export interface SubTodo {
   createdAt?: string | null;
   priority?: "low" | "medium" | "high" | null;
   location?: LatLng | null;
+  locationDescription?: string | null;
 }
 
 export interface Todo {
@@ -24,6 +25,7 @@ export interface Todo {
   createdAt?: string | null;
   priority?: "low" | "medium" | "high" | null;
   location?: LatLng | null;
+  locationDescription?: string | null;
 }
 
 export interface ListScreenProps {
