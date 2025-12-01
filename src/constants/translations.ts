@@ -116,3 +116,6 @@ export const translations = {
       `You are within 100 meters of \"${task}\".`,
   },
 };
+
+export type TranslationBundle =
+  (typeof translations)[keyof typeof translations];

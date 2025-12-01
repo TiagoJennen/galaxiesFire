@@ -12,7 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import MapLibreGL from "@maplibre/maplibre-react-native";
 import type { ThemeColors } from "../theme";
 import type { LatLng } from "../types";
-import { translations } from "../../../../translations";
+import { translations } from "../../../constants/translations";
 
 type LocationModalProps = {
   visible: boolean;

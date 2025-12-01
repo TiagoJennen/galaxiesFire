@@ -11,12 +11,12 @@ import {
   ScrollView,
   Dimensions,
 } from "react-native";
-import { FIREBASE_AUTH } from "../../FirebaseConfig";
+import { FIREBASE_AUTH } from "../services/FirebaseConfig";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
 } from "firebase/auth";
-import { translations } from "../../translations";
+import { translations } from "../constants/translations";
 
 // Props die de login screen verwacht:
 // - theme: 'light' of 'dark' voor styling

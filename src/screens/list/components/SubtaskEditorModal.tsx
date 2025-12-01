@@ -34,7 +34,6 @@ type SubtaskStrings = {
 type SubtaskEditorModalProps = {
   visible: boolean;
   colors: ThemeColors;
-  language: "nl" | "en";
   subtaskText: string;
   onChangeText: (text: string) => void;
   onOpenDate: () => void;
@@ -63,7 +62,6 @@ type SubtaskEditorModalProps = {
 const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
   visible,
   colors,
-  language,
   subtaskText,
   onChangeText,
   onOpenDate,
