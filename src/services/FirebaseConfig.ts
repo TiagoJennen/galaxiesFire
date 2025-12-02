@@ -16,7 +16,7 @@ const firebaseConfig = {
 // Initialize app
 export const FIREBASE_APP = initializeApp(firebaseConfig);
 
-// ✅ Gebruik require om getReactNativePersistence veilig te importeren
+// Gebruik require om getReactNativePersistence veilig te importeren
 // Dit voorkomt TypeScript-importfouten
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getReactNativePersistence } = require("firebase/auth");

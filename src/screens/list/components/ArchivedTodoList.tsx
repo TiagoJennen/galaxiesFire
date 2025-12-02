@@ -1,5 +1,6 @@
-import React from "react";
-import { FlatList, Image, Text, TouchableOpacity, View } from "react-native";
+import React, { memo } from "react";
+import { Image, Text, TouchableOpacity, View } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
 import InlineSubtaskEditor from "./InlineSubtaskEditor";
 import type { ThemeColors } from "../theme";
@@ -101,9 +102,10 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
     (strings as any).added ?? (language === "nl" ? "Toegevoegd" : "Added");
 
   return (
-    <FlatList
+    <FlashList
       data={displayTodos}
       keyExtractor={(entry) => `arch-${entry.originalIndex}`}
+      estimatedItemSize={340}
       renderItem={({ item: entry }) => {
         const item = entry.item;
         const originalIndex = entry.originalIndex;
@@ -529,4 +531,4 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
   );
 };
 
-export default ArchivedTodoList;
+export default memo(ArchivedTodoList);

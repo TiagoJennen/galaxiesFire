@@ -5,7 +5,14 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { View, Text, TouchableOpacity, Alert, Platform } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Alert,
+  Platform,
+  InteractionManager,
+} from "react-native";
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
@@ -49,6 +56,7 @@ import ListHeaderControls from "./list/components/ListHeaderControls";
 import TaskCreator from "./list/components/TaskCreator";
 import ActiveTodoList from "./list/components/ActiveTodoList";
 import ArchivedTodoList from "./list/components/ArchivedTodoList";
+import { measureAsync } from "../utils/performance";
 
 // Onthoud de laatst gekozen lijstweergave zodat toggles (zoals thema) het niet resetten.
 let lastShowArchive = false;
@@ -152,8 +160,8 @@ const List: React.FC<ListScreenProps> = ({
   const todosRef = useRef<Todo[]>([]);
   const archivedTodosRef = useRef<Todo[]>([]);
 
-  const colors = buildThemeColors(theme);
-  const strings = translations[language];
+  const colors = useMemo(() => buildThemeColors(theme), [theme]);
+  const strings = useMemo(() => translations[language], [language]);
 
   useEffect(() => {
     todosRef.current = todos;
@@ -176,12 +184,15 @@ const List: React.FC<ListScreenProps> = ({
     return 0;
   };
 
-  const priorityColor = (priority?: "low" | "medium" | "high" | null) => {
-    if (priority === "high") return "#ff6b6b";
-    if (priority === "medium") return "#ffb366";
-    if (priority === "low") return "#6bc66b";
-    return "#6c757d";
-  };
+  const priorityColor = useCallback(
+    (priority?: "low" | "medium" | "high" | null) => {
+      if (priority === "high") return "#ff6b6b";
+      if (priority === "medium") return "#ffb366";
+      if (priority === "low") return "#6bc66b";
+      return "#6c757d";
+    },
+    []
+  );
 
   const composeAddressString = useCallback(
     (result: Location.LocationGeocodedAddress | undefined) => {
@@ -246,49 +257,59 @@ const List: React.FC<ListScreenProps> = ({
       }
       const key = makeLocationKey(location);
       return inflightLocationKeysRef.current.has(key)
-        ? translations[language].locationLoading
-        : translations[language].locationUnavailable;
+        ? strings.locationLoading
+        : strings.locationUnavailable;
     },
-    [language]
+    [strings]
   );
 
-  const buildDisplayList = (list: Todo[]) =>
-    list
-      .map((item, originalIndex) => ({ item, originalIndex }))
-      .sort((a, b) => {
-        const priorityDiff =
-          prioritySort === "highToLow"
-            ? priorityRank(b.item.priority ?? null) -
-              priorityRank(a.item.priority ?? null)
-            : priorityRank(a.item.priority ?? null) -
-              priorityRank(b.item.priority ?? null);
-        if (priorityDiff !== 0) return priorityDiff;
+  const buildDisplayList = useCallback(
+    (list: Todo[]) =>
+      list
+        .map((item, originalIndex) => ({ item, originalIndex }))
+        .sort((a, b) => {
+          const priorityDiff =
+            prioritySort === "highToLow"
+              ? priorityRank(b.item.priority ?? null) -
+                priorityRank(a.item.priority ?? null)
+              : priorityRank(a.item.priority ?? null) -
+                priorityRank(b.item.priority ?? null);
+          if (priorityDiff !== 0) return priorityDiff;
 
-        const aTime = a.item.createdAt
-          ? new Date(a.item.createdAt).getTime()
-          : 0;
-        const bTime = b.item.createdAt
-          ? new Date(b.item.createdAt).getTime()
-          : 0;
-        return sortOrder === "newest" ? bTime - aTime : aTime - bTime;
-      });
+          const aTime = a.item.createdAt
+            ? new Date(a.item.createdAt).getTime()
+            : 0;
+          const bTime = b.item.createdAt
+            ? new Date(b.item.createdAt).getTime()
+            : 0;
+          return sortOrder === "newest" ? bTime - aTime : aTime - bTime;
+        }),
+    [prioritySort, sortOrder]
+  );
 
-  const buildSubtaskDisplay = (list: SubTodo[]) =>
-    list
-      .map((sub, originalIndex) => ({ sub, originalIndex }))
-      .sort((a, b) => {
-        const priorityDiff =
-          prioritySort === "highToLow"
-            ? priorityRank(b.sub.priority ?? null) -
-              priorityRank(a.sub.priority ?? null)
-            : priorityRank(a.sub.priority ?? null) -
-              priorityRank(b.sub.priority ?? null);
-        if (priorityDiff !== 0) return priorityDiff;
+  const buildSubtaskDisplay = useCallback(
+    (list: SubTodo[]) =>
+      list
+        .map((sub, originalIndex) => ({ sub, originalIndex }))
+        .sort((a, b) => {
+          const priorityDiff =
+            prioritySort === "highToLow"
+              ? priorityRank(b.sub.priority ?? null) -
+                priorityRank(a.sub.priority ?? null)
+              : priorityRank(a.sub.priority ?? null) -
+                priorityRank(b.sub.priority ?? null);
+          if (priorityDiff !== 0) return priorityDiff;
 
-        const aTime = a.sub.createdAt ? new Date(a.sub.createdAt).getTime() : 0;
-        const bTime = b.sub.createdAt ? new Date(b.sub.createdAt).getTime() : 0;
-        return sortOrder === "newest" ? bTime - aTime : aTime - bTime;
-      });
+          const aTime = a.sub.createdAt
+            ? new Date(a.sub.createdAt).getTime()
+            : 0;
+          const bTime = b.sub.createdAt
+            ? new Date(b.sub.createdAt).getTime()
+            : 0;
+          return sortOrder === "newest" ? bTime - aTime : aTime - bTime;
+        }),
+    [prioritySort, sortOrder]
+  );
 
   const activeDisplayTodos = useMemo(
     () => buildDisplayList(todos),
@@ -300,88 +321,153 @@ const List: React.FC<ListScreenProps> = ({
     [archivedTodos, prioritySort, sortOrder]
   );
 
-  const geofenceTargetsFromTodos = (list: Todo[]) =>
-    list
-      .filter((todo) => todo.location)
-      .map((todo) => ({
-        id: `${todo.createdAt ?? todo.text}-${todo.location?.latitude ?? 0}-${
-          todo.location?.longitude ?? 0
-        }`,
-        title: todo.text,
-        latitude: todo.location!.latitude,
-        longitude: todo.location!.longitude,
-      }));
+  const geofenceTargetsFromTodos = useCallback(
+    (list: Todo[]) =>
+      list
+        .filter((todo) => todo.location)
+        .map((todo) => ({
+          id: `${todo.createdAt ?? todo.text}-${todo.location?.latitude ?? 0}-${
+            todo.location?.longitude ?? 0
+          }`,
+          title: todo.text,
+          latitude: todo.location!.latitude,
+          longitude: todo.location!.longitude,
+        })),
+    []
+  );
 
-  const formatDate = (value?: string | null) => {
-    if (!value) return "";
-    const date = new Date(value);
-    return date.toLocaleString(language === "nl" ? "nl-NL" : "en-US", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  };
+  const formatDate = useCallback(
+    (value?: string | null) => {
+      if (!value) return "";
+      const date = new Date(value);
+      return date.toLocaleString(language === "nl" ? "nl-NL" : "en-US", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+    },
+    [language]
+  );
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, async (user) => {
-      try {
-        if (user) {
-          setUserId(user.uid);
-          await AsyncStorage.setItem("current_user_id", user.uid);
-          try {
-            const savedTodos = await AsyncStorage.getItem(`todos_${user.uid}`);
-            if (savedTodos) {
-              setTodos(JSON.parse(savedTodos));
-            }
-            const savedArchive = await AsyncStorage.getItem(
-              `archive_${user.uid}`
-            );
-            if (savedArchive) {
-              setArchivedTodos(JSON.parse(savedArchive));
-            }
-          } catch (storageError) {
-            console.log("Failed to read cached todos:", storageError);
-          }
+    let cancelled = false;
+    const scheduledTasks: Array<{ cancel?: () => void }> = [];
 
-          const remote = await loadTodosFirebase(user.uid);
-          setTodos(remote.todos);
-          setArchivedTodos(remote.archive);
-
-          if (Platform.OS !== "web") {
-            try {
-              await initializeGeofenceTask();
-              await syncGeofenceTargets(
-                user.uid,
-                geofenceTargetsFromTodos(remote.todos)
-              );
-            } catch (geoError) {
-              console.log("Failed to initialize geofence tracking:", geoError);
-            }
-          }
-        } else {
-          await AsyncStorage.removeItem("current_user_id");
+    const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, (user) => {
+      if (!user) {
+        AsyncStorage.removeItem("current_user_id").catch((error) =>
+          console.log("Failed to clear cached user id:", error)
+        );
+        if (!cancelled) {
           setUserId(null);
           setTodos([]);
           setArchivedTodos([]);
-          if (Platform.OS !== "web") {
+          setAuthReady(true);
+        }
+        if (Platform.OS !== "web") {
+          const task = InteractionManager.runAfterInteractions(async () => {
             try {
               await clearGeofenceTaskState();
             } catch (clearError) {
               console.log("Failed to clear geofence state:", clearError);
             }
+          });
+          scheduledTasks.push(task);
+        }
+        return;
+      }
+
+      const uid = user.uid;
+      setUserId(uid);
+      AsyncStorage.setItem("current_user_id", uid).catch((error) =>
+        console.log("Failed to persist current_user_id:", error)
+      );
+
+      const task = InteractionManager.runAfterInteractions(async () => {
+        if (cancelled) return;
+        let readySet = false;
+
+        try {
+          const local = await measureAsync("hydrate-local-cache", async () => {
+            const [savedTodos, savedArchive] = await Promise.all([
+              AsyncStorage.getItem(`todos_${uid}`),
+              AsyncStorage.getItem(`archive_${uid}`),
+            ]);
+            return {
+              todos: savedTodos ? JSON.parse(savedTodos) : null,
+              archive: savedArchive ? JSON.parse(savedArchive) : null,
+            };
+          });
+
+          if (!cancelled) {
+            if (local.todos) {
+              setTodos(local.todos);
+            }
+            if (local.archive) {
+              setArchivedTodos(local.archive);
+            }
+            setAuthReady(true);
+            readySet = true;
+          }
+        } catch (storageError) {
+          if (!cancelled) {
+            console.log("Failed to read cached todos:", storageError);
+            setAuthReady(true);
+            readySet = true;
           }
         }
-      } catch (authError) {
-        console.log("Auth state change handling failed:", authError);
-      } finally {
-        setAuthReady(true);
-      }
+
+        if (cancelled) return;
+
+        try {
+          const remote = await measureAsync("hydrate-remote-firestore", () =>
+            loadTodosFirebase(uid)
+          );
+          if (cancelled) return;
+          setTodos(remote.todos);
+          setArchivedTodos(remote.archive);
+
+          if (Platform.OS !== "web") {
+            await measureAsync("geofence-initialization", async () => {
+              try {
+                await initializeGeofenceTask();
+                if (locationPermissionGranted) {
+                  await syncGeofenceTargets(
+                    uid,
+                    geofenceTargetsFromTodos(remote.todos)
+                  );
+                }
+              } catch (geoError) {
+                console.log(
+                  "Failed to initialize geofence tracking:",
+                  geoError
+                );
+              }
+            });
+          }
+        } catch (remoteError) {
+          if (!cancelled) {
+            console.log("Failed to load todos from Firebase:", remoteError);
+          }
+        } finally {
+          if (!cancelled && !readySet) {
+            setAuthReady(true);
+          }
+        }
+      });
+
+      scheduledTasks.push(task);
     });
-    return unsubscribe;
-  }, []);
+
+    return () => {
+      cancelled = true;
+      scheduledTasks.forEach((task) => task.cancel?.());
+      unsubscribe();
+    };
+  }, [geofenceTargetsFromTodos, locationPermissionGranted]);
 
   useEffect(() => {
     lastShowArchive = showArchive;
@@ -427,35 +513,41 @@ const List: React.FC<ListScreenProps> = ({
     };
   }, []);
 
-  const saveAll = (newTodos: Todo[], newArchived: Todo[]) => {
-    setTodos(newTodos);
-    setArchivedTodos(newArchived);
+  const saveAll = useCallback(
+    (newTodos: Todo[], newArchived: Todo[]) => {
+      setTodos(newTodos);
+      setArchivedTodos(newArchived);
 
-    if (userId) {
-      // Sla lokaal op per gebruiker en push naar firestore
-      AsyncStorage.setItem(`todos_${userId}`, JSON.stringify(newTodos)).catch(
-        (e) => console.log("Fout bij opslaan todos lokaal:", e)
-      );
-      AsyncStorage.setItem(
-        `archive_${userId}`,
-        JSON.stringify(newArchived)
-      ).catch((e) => console.log("Fout bij opslaan archief lokaal:", e));
-      saveTodosFirebase(userId, newTodos, newArchived);
-    } else {
-      // Sla lokaal op voor anonieme gebruiker
-      AsyncStorage.setItem("todos_local", JSON.stringify(newTodos)).catch((e) =>
-        console.log("Fout bij opslaan todos lokaal (local):", e)
-      );
-      AsyncStorage.setItem("archive_local", JSON.stringify(newArchived)).catch(
-        (e) => console.log("Fout bij opslaan archief lokaal (local):", e)
-      );
-    }
-    if (Platform.OS !== "web" && userId && locationPermissionGranted) {
-      syncGeofenceTargets(userId, geofenceTargetsFromTodos(newTodos)).catch(
-        (err) => console.log("Geofence sync failed:", err)
-      );
-    }
-  };
+      if (userId) {
+        // Sla lokaal op per gebruiker en push naar firestore
+        AsyncStorage.setItem(`todos_${userId}`, JSON.stringify(newTodos)).catch(
+          (e) => console.log("Fout bij opslaan todos lokaal:", e)
+        );
+        AsyncStorage.setItem(
+          `archive_${userId}`,
+          JSON.stringify(newArchived)
+        ).catch((e) => console.log("Fout bij opslaan archief lokaal:", e));
+        saveTodosFirebase(userId, newTodos, newArchived);
+      } else {
+        // Sla lokaal op voor anonieme gebruiker
+        AsyncStorage.setItem("todos_local", JSON.stringify(newTodos)).catch(
+          (e) => console.log("Fout bij opslaan todos lokaal (local):", e)
+        );
+        AsyncStorage.setItem(
+          "archive_local",
+          JSON.stringify(newArchived)
+        ).catch((e) =>
+          console.log("Fout bij opslaan archief lokaal (local):", e)
+        );
+      }
+      if (Platform.OS !== "web" && userId && locationPermissionGranted) {
+        syncGeofenceTargets(userId, geofenceTargetsFromTodos(newTodos)).catch(
+          (err) => console.log("Geofence sync failed:", err)
+        );
+      }
+    },
+    [userId, locationPermissionGranted, geofenceTargetsFromTodos]
+  );
 
   useEffect(() => {
     const candidates: Array<{
@@ -579,105 +671,134 @@ const List: React.FC<ListScreenProps> = ({
   }, [todos, archivedTodos, reverseGeocodeToDescription, saveAll]);
 
   // Toon bevestigingsdialoog voordat iets verwijderd wordt
-  const confirmDelete = (
-    title: string,
-    message: string,
-    onConfirm: () => void
-  ) => {
-    if (Platform.OS === "web") {
-      if (window.confirm(message)) onConfirm();
-      return;
-    }
-    Alert.alert(title, message, [
-      { text: translations[language].cancel, style: "cancel" },
-      {
-        text: translations[language].delete,
-        style: "destructive",
-        onPress: onConfirm,
-      },
-    ]);
-  };
+  const confirmDelete = useCallback(
+    (title: string, message: string, onConfirm: () => void) => {
+      if (Platform.OS === "web") {
+        if (window.confirm(message)) onConfirm();
+        return;
+      }
+      const cancelLabel =
+        strings.cancel ?? (language === "nl" ? "Annuleer" : "Cancel");
+      const deleteLabel =
+        strings.delete ?? (language === "nl" ? "Verwijderen" : "Delete");
+      Alert.alert(title, message, [
+        {
+          text: cancelLabel,
+          style: "cancel",
+        },
+        {
+          text: deleteLabel,
+          style: "destructive",
+          onPress: onConfirm,
+        },
+      ]);
+    },
+    [language, strings]
+  );
 
-  const showInputWarning = (message: string) => {
-    const title = language === "nl" ? "Let op" : "Warning";
-    if (Platform.OS === "web") {
-      window.alert(`${title}: ${message}`);
-    } else {
-      const okLabel = "OK";
-      Alert.alert(title, message, [{ text: okLabel }]);
-    }
-  };
+  const showInputWarning = useCallback(
+    (message: string) => {
+      const title = language === "nl" ? "Let op" : "Warning";
+      if (Platform.OS === "web") {
+        window.alert(`${title}: ${message}`);
+      } else {
+        const okLabel = "OK";
+        Alert.alert(title, message, [{ text: okLabel }]);
+      }
+    },
+    [language]
+  );
 
   // Combineer datum + tijd naar ISO string (gebruik 00:00 als geen tijd)
-  const combineDateAndTime = (date: Date | null, time: Date | null) => {
-    if (!date && !time) return null;
-    const d = date ? new Date(date) : new Date();
-    if (time) {
-      d.setHours(time.getHours(), time.getMinutes(), 0, 0);
-    } else {
-      d.setHours(0, 0, 0, 0);
-    }
-    return d.toISOString();
-  };
+  const combineDateAndTime = useCallback(
+    (date: Date | null, time: Date | null) => {
+      if (!date && !time) return null;
+      const d = date ? new Date(date) : new Date();
+      if (time) {
+        d.setHours(time.getHours(), time.getMinutes(), 0, 0);
+      } else {
+        d.setHours(0, 0, 0, 0);
+      }
+      return d.toISOString();
+    },
+    []
+  );
 
   // Voeg een nieuwe taak toe met optionele deadline/tijd
-  const addTodo = (target: ListSource = "active") => {
-    if (!task.trim()) {
-      showInputWarning(
-        language === "nl" ? "Vul een taak in." : "Please enter a task."
-      );
-      return;
-    }
+  const addTodo = useCallback(
+    (target: ListSource = "active") => {
+      if (!task.trim()) {
+        showInputWarning(strings.taskNameRequired);
+        return;
+      }
 
-    const finalDate = combineDateAndTime(selectedDate, selectedTime);
+      const finalDate = combineDateAndTime(selectedDate, selectedTime);
 
-    const newTodo: Todo = {
-      text: task,
-      done: false,
-      deadline: finalDate,
-      subtasks: [],
-      image: null,
-      createdAt: new Date().toISOString(),
-      priority: newPriority,
-      location: selectedLocation,
-      locationDescription: selectedLocationDescription,
-    };
-    if (target === "archive") {
-      saveAll(todos, [...archivedTodos, newTodo]);
-    } else {
-      saveAll([...todos, newTodo], archivedTodos);
-    }
-    setTask("");
-    setSelectedDate(null);
-    setSelectedTime(null);
-    setSelectedLocation(null);
-    setSelectedLocationDescription(null);
-    setMapRegion(null);
-  };
+      const newTodo: Todo = {
+        text: task,
+        done: false,
+        deadline: finalDate,
+        subtasks: [],
+        image: null,
+        createdAt: new Date().toISOString(),
+        priority: newPriority,
+        location: selectedLocation,
+        locationDescription: selectedLocationDescription,
+      };
+      if (target === "archive") {
+        saveAll(todos, [...archivedTodos, newTodo]);
+      } else {
+        saveAll([...todos, newTodo], archivedTodos);
+      }
+      setTask("");
+      setSelectedDate(null);
+      setSelectedTime(null);
+      setSelectedLocation(null);
+      setSelectedLocationDescription(null);
+      setMapRegion(null);
+    },
+    [
+      archivedTodos,
+      combineDateAndTime,
+      newPriority,
+      saveAll,
+      selectedDate,
+      selectedLocation,
+      selectedLocationDescription,
+      selectedTime,
+      showInputWarning,
+      strings,
+      task,
+      todos,
+    ]
+  );
 
-  const openTodoEditor = (index: number, source: ListSource = "active") => {
-    const list = source === "archive" ? archivedTodos : todos;
-    const target = list[index];
-    if (!target) return;
-    setTaskEditorSource(source);
-    setTaskEditorIndex(index);
-    setTaskEditorText(target.text);
-    if (target.deadline) {
-      const deadlineDate = new Date(target.deadline);
-      setTaskEditorDate(deadlineDate);
-      setTaskEditorTime(deadlineDate);
-    } else {
-      setTaskEditorDate(null);
-      setTaskEditorTime(null);
-    }
-    setShowTaskEditorDatePicker(false);
-    setShowTaskEditorTimePicker(false);
-    setTaskEditorSnapshot({
-      ...target,
-      subtasks: [...target.subtasks],
-    });
-    setTaskEditorVisible(true);
-  };
+  const openTodoEditor = useCallback(
+    (index: number, source: ListSource = "active") => {
+      const list = source === "archive" ? archivedTodos : todos;
+      const target = list[index];
+      if (!target) return;
+      setTaskEditorSource(source);
+      setTaskEditorIndex(index);
+      setTaskEditorText(target.text);
+      if (target.deadline) {
+        const deadlineDate = new Date(target.deadline);
+        setTaskEditorDate(deadlineDate);
+        setTaskEditorTime(deadlineDate);
+      } else {
+        setTaskEditorDate(null);
+        setTaskEditorTime(null);
+      }
+      setShowTaskEditorDatePicker(false);
+      setShowTaskEditorTimePicker(false);
+      setTaskEditorSnapshot({
+        ...target,
+        subtasks: [...target.subtasks],
+      });
+      setTaskEditorVisible(true);
+    },
+    [archivedTodos, todos]
+  );
 
   const closeTodoEditor = () => {
     setTaskEditorVisible(false);
@@ -695,7 +816,7 @@ const List: React.FC<ListScreenProps> = ({
     if (taskEditorIndex === null) return;
     const trimmed = taskEditorText.trim();
     if (!trimmed) {
-      showInputWarning(translations[language].taskNameRequired);
+      showInputWarning(strings.taskNameRequired);
       return;
     }
 
@@ -845,31 +966,30 @@ const List: React.FC<ListScreenProps> = ({
     saveAll(updatedTodos, updatedArchived);
   };
 
-  const openSubtaskEditor = (
-    todoIndex: number,
-    subIndex: number,
-    source: ListSource = "active"
-  ) => {
-    const parentList = source === "archive" ? archivedTodos : todos;
-    const parent = parentList[todoIndex];
-    const sub = parent?.subtasks[subIndex];
-    if (!parent || !sub) return;
-    setSubtaskEditorSource(source);
-    setSubtaskEditorParentIndex(todoIndex);
-    setSubtaskEditorIndex(subIndex);
-    setSubtaskEditorText(sub.text);
-    if (sub.deadline) {
-      const deadlineDate = new Date(sub.deadline);
-      setSubtaskEditorDate(deadlineDate);
-      setSubtaskEditorTime(deadlineDate);
-    } else {
-      setSubtaskEditorDate(null);
-      setSubtaskEditorTime(null);
-    }
-    setShowSubtaskEditorDatePicker(false);
-    setShowSubtaskEditorTimePicker(false);
-    setSubtaskEditorVisible(true);
-  };
+  const openSubtaskEditor = useCallback(
+    (todoIndex: number, subIndex: number, source: ListSource = "active") => {
+      const parentList = source === "archive" ? archivedTodos : todos;
+      const parent = parentList[todoIndex];
+      const sub = parent?.subtasks[subIndex];
+      if (!parent || !sub) return;
+      setSubtaskEditorSource(source);
+      setSubtaskEditorParentIndex(todoIndex);
+      setSubtaskEditorIndex(subIndex);
+      setSubtaskEditorText(sub.text);
+      if (sub.deadline) {
+        const deadlineDate = new Date(sub.deadline);
+        setSubtaskEditorDate(deadlineDate);
+        setSubtaskEditorTime(deadlineDate);
+      } else {
+        setSubtaskEditorDate(null);
+        setSubtaskEditorTime(null);
+      }
+      setShowSubtaskEditorDatePicker(false);
+      setShowSubtaskEditorTimePicker(false);
+      setSubtaskEditorVisible(true);
+    },
+    [archivedTodos, todos]
+  );
 
   const closeSubtaskEditor = () => {
     setSubtaskEditorVisible(false);
@@ -889,7 +1009,7 @@ const List: React.FC<ListScreenProps> = ({
       return;
     const trimmed = subtaskEditorText.trim();
     if (!trimmed) {
-      showInputWarning(translations[language].subtaskNameRequired);
+      showInputWarning(strings.subtaskNameRequired);
       return;
     }
     const isArchive = subtaskEditorSource === "archive";
@@ -1001,52 +1121,48 @@ const List: React.FC<ListScreenProps> = ({
   };
 
   // Wissel done status voor taak
-  const toggleTodo = (index: number, source: ListSource = "active") => {
-    const updatedTodos = [...todos];
-    const updatedArchived = [...archivedTodos];
-    if (source === "archive") {
-      if (!updatedArchived[index]) return;
-      updatedArchived[index] = {
-        ...updatedArchived[index],
-        done: !updatedArchived[index].done,
-      };
-    } else {
-      if (!updatedTodos[index]) return;
-      updatedTodos[index] = {
-        ...updatedTodos[index],
-        done: !updatedTodos[index].done,
-      };
-    }
-    saveAll(updatedTodos, updatedArchived);
-  };
+  const toggleTodo = useCallback(
+    (index: number, source: ListSource = "active") => {
+      const updatedTodos = [...todos];
+      const updatedArchived = [...archivedTodos];
+      if (source === "archive") {
+        if (!updatedArchived[index]) return;
+        updatedArchived[index] = {
+          ...updatedArchived[index],
+          done: !updatedArchived[index].done,
+        };
+      } else {
+        if (!updatedTodos[index]) return;
+        updatedTodos[index] = {
+          ...updatedTodos[index],
+          done: !updatedTodos[index].done,
+        };
+      }
+      saveAll(updatedTodos, updatedArchived);
+    },
+    [archivedTodos, saveAll, todos]
+  );
 
   // Wissel done status voor subtask
-  const toggleSubtask = (
-    todoIndex: number,
-    subIndex: number,
-    source: ListSource = "active"
-  ) => {
-    const updatedTodos = [...todos];
-    const updatedArchived = [...archivedTodos];
-    const targetList = source === "archive" ? updatedArchived : updatedTodos;
-    const parent = targetList[todoIndex];
-    const sub = parent?.subtasks[subIndex];
-    if (!parent || !sub) return;
-    const updatedSubtasks = [...parent.subtasks];
-    updatedSubtasks[subIndex] = { ...sub, done: !sub.done };
-    targetList[todoIndex] = { ...parent, subtasks: updatedSubtasks };
-    saveAll(updatedTodos, updatedArchived);
-  };
+  const toggleSubtask = useCallback(
+    (todoIndex: number, subIndex: number, source: ListSource = "active") => {
+      const updatedTodos = [...todos];
+      const updatedArchived = [...archivedTodos];
+      const targetList = source === "archive" ? updatedArchived : updatedTodos;
+      const parent = targetList[todoIndex];
+      const sub = parent?.subtasks[subIndex];
+      if (!parent || !sub) return;
+      const updatedSubtasks = [...parent.subtasks];
+      updatedSubtasks[subIndex] = { ...sub, done: !sub.done };
+      targetList[todoIndex] = { ...parent, subtasks: updatedSubtasks };
+      saveAll(updatedTodos, updatedArchived);
+    },
+    [archivedTodos, saveAll, todos]
+  );
 
-  const removeSubtask = (
-    todoIndex: number,
-    subIndex: number,
-    source: ListSource = "active"
-  ) => {
-    confirmDelete(
-      translations[language].confirmDelete,
-      translations[language].deleteSubtask,
-      () => {
+  const removeSubtask = useCallback(
+    (todoIndex: number, subIndex: number, source: ListSource = "active") => {
+      confirmDelete(strings.confirmDelete, strings.deleteSubtask, () => {
         const updatedTodos = [...todos];
         const updatedArchived = [...archivedTodos];
         const targetList =
@@ -1060,9 +1176,10 @@ const List: React.FC<ListScreenProps> = ({
         );
         targetList[todoIndex] = { ...parent, subtasks: filteredSubtasks };
         saveAll(updatedTodos, updatedArchived);
-      }
-    );
-  };
+      });
+    },
+    [archivedTodos, confirmDelete, saveAll, strings, todos]
+  );
 
   const beginInlineSubtaskCreation = useCallback(
     (todoIndex: number, source: ListSource) => {
@@ -1079,199 +1196,227 @@ const List: React.FC<ListScreenProps> = ({
   );
 
   // Verwijder taak (met confirm)
-  const removeTodo = (index: number) => {
-    confirmDelete(
-      translations[language].confirmDelete,
-      translations[language].deleteTask,
-      () =>
+  const removeTodo = useCallback(
+    (index: number) => {
+      confirmDelete(strings.confirmDelete, strings.deleteTask, () =>
         saveAll(
           todos.filter((_, i) => i !== index),
           archivedTodos
         )
-    );
-  };
+      );
+    },
+    [archivedTodos, confirmDelete, saveAll, strings, todos]
+  );
 
   // Archiveer taak: verplaats van todos naar archivedTodos
-  const archiveTodo = (index: number) => {
-    const todoToArchive = todos[index];
-    saveAll(
-      todos.filter((_, i) => i !== index),
-      [...archivedTodos, todoToArchive]
-    );
-  };
+  const archiveTodo = useCallback(
+    (index: number) => {
+      const todoToArchive = todos[index];
+      saveAll(
+        todos.filter((_, i) => i !== index),
+        [...archivedTodos, todoToArchive]
+      );
+    },
+    [archivedTodos, saveAll, todos]
+  );
 
-  const unarchiveTodo = (index: number) => {
-    const todoToUnarchive = archivedTodos[index];
-    if (!todoToUnarchive) {
-      return;
-    }
-    saveAll(
-      [...todos, todoToUnarchive],
-      archivedTodos.filter((_, i) => i !== index)
-    );
-  };
+  const unarchiveTodo = useCallback(
+    (index: number) => {
+      const todoToUnarchive = archivedTodos[index];
+      if (!todoToUnarchive) {
+        return;
+      }
+      saveAll(
+        [...todos, todoToUnarchive],
+        archivedTodos.filter((_, i) => i !== index)
+      );
+    },
+    [archivedTodos, saveAll, todos]
+  );
 
-  const removeArchivedTodo = (index: number) => {
-    confirmDelete(
-      translations[language].confirmDelete,
-      translations[language].deleteTask,
-      () =>
+  const removeArchivedTodo = useCallback(
+    (index: number) => {
+      confirmDelete(strings.confirmDelete, strings.deleteTask, () =>
         saveAll(
           todos,
           archivedTodos.filter((_, i) => i !== index)
         )
-    );
-  };
+      );
+    },
+    [archivedTodos, confirmDelete, saveAll, strings, todos]
+  );
 
   // Voeg subtask toe aan bestaande taak (met optionele deadline/tijd)
-  const addSubtask = (todoIndex: number, source: ListSource = "active") => {
-    if (!subtaskText.trim()) {
-      showInputWarning(
-        language === "nl" ? "Vul een subtaak in." : "Please enter a subtask."
-      );
-      return;
-    }
+  const addSubtask = useCallback(
+    (todoIndex: number, source: ListSource = "active") => {
+      if (!subtaskText.trim()) {
+        showInputWarning(strings.subtaskNameRequired);
+        return;
+      }
 
-    const finalDate = combineDateAndTime(subtaskDate, subtaskTime);
+      const finalDate = combineDateAndTime(subtaskDate, subtaskTime);
 
-    const updatedTodos = [...todos];
-    const updatedArchived = [...archivedTodos];
-    const targetList = source === "archive" ? updatedArchived : updatedTodos;
-    const parent = targetList[todoIndex];
-    if (!parent) {
-      showInputWarning(
-        language === "nl"
-          ? "Kon de hoofdtaak niet vinden."
-          : "Could not find the parent task."
-      );
-      return;
-    }
-    const updatedSubtasks = [
-      ...parent.subtasks,
-      {
-        text: subtaskText,
-        done: false,
-        deadline: finalDate,
-        image: null,
-        createdAt: new Date().toISOString(),
-        priority: newSubtaskPriority,
-        location: newSubtaskLocation,
-        locationDescription: newSubtaskLocationDescription,
-      },
-    ];
-    targetList[todoIndex] = {
-      ...parent,
-      subtasks: updatedSubtasks,
-    };
-    saveAll(updatedTodos, updatedArchived);
-    setSubtaskText("");
-    setSubtaskDate(null);
-    setSubtaskTime(null);
-    setNewSubtaskPriority("medium");
-    setNewSubtaskLocation(null);
-    setNewSubtaskLocationDescription(null);
-    setEditingTodoIndex(null);
-  };
+      const updatedTodos = [...todos];
+      const updatedArchived = [...archivedTodos];
+      const targetList = source === "archive" ? updatedArchived : updatedTodos;
+      const parent = targetList[todoIndex];
+      if (!parent) {
+        showInputWarning(
+          language === "nl"
+            ? "Kon de hoofdtaak niet vinden."
+            : "Could not find the parent task."
+        );
+        return;
+      }
+      const updatedSubtasks = [
+        ...parent.subtasks,
+        {
+          text: subtaskText,
+          done: false,
+          deadline: finalDate,
+          image: null,
+          createdAt: new Date().toISOString(),
+          priority: newSubtaskPriority,
+          location: newSubtaskLocation,
+          locationDescription: newSubtaskLocationDescription,
+        },
+      ];
+      targetList[todoIndex] = {
+        ...parent,
+        subtasks: updatedSubtasks,
+      };
+      saveAll(updatedTodos, updatedArchived);
+      setSubtaskText("");
+      setSubtaskDate(null);
+      setSubtaskTime(null);
+      setNewSubtaskPriority("medium");
+      setNewSubtaskLocation(null);
+      setNewSubtaskLocationDescription(null);
+      setEditingTodoIndex(null);
+    },
+    [
+      archivedTodos,
+      combineDateAndTime,
+      language,
+      strings,
+      newSubtaskLocation,
+      newSubtaskLocationDescription,
+      newSubtaskPriority,
+      saveAll,
+      showInputWarning,
+      subtaskDate,
+      subtaskText,
+      subtaskTime,
+      todos,
+    ]
+  );
 
   // Afbeelding toevoegen (camera of galerij). Ondersteunt web en native.
-  const pickImage = async (
-    forSubtask = false,
-    todoIndex?: number,
-    subIndex?: number,
-    isArchive = false,
-    fromGallery = false
-  ) => {
-    const applyImageUpdate = (uri: string) => {
-      if (isArchive) {
-        const updatedArchived = [...archivedTodos];
-        if (forSubtask && todoIndex !== undefined && subIndex !== undefined) {
-          updatedArchived[todoIndex].subtasks[subIndex].image = uri;
-        } else if (!forSubtask && todoIndex !== undefined) {
-          updatedArchived[todoIndex].image = uri;
-          if (taskEditorIndex === todoIndex && taskEditorSource === "archive") {
-            setTaskEditorSnapshot((prev) =>
-              prev ? { ...prev, image: uri } : prev
-            );
+  const pickImage = useCallback(
+    async (
+      forSubtask = false,
+      todoIndex?: number,
+      subIndex?: number,
+      isArchive = false,
+      fromGallery = false
+    ) => {
+      const applyImageUpdate = (uri: string) => {
+        if (isArchive) {
+          const updatedArchived = [...archivedTodos];
+          if (forSubtask && todoIndex !== undefined && subIndex !== undefined) {
+            updatedArchived[todoIndex].subtasks[subIndex].image = uri;
+          } else if (!forSubtask && todoIndex !== undefined) {
+            updatedArchived[todoIndex].image = uri;
+            if (
+              taskEditorIndex === todoIndex &&
+              taskEditorSource === "archive"
+            ) {
+              setTaskEditorSnapshot((prev) =>
+                prev ? { ...prev, image: uri } : prev
+              );
+            }
           }
-        }
-        saveAll(todos, updatedArchived);
-      } else {
-        const updatedTodos = [...todos];
-        if (forSubtask && todoIndex !== undefined && subIndex !== undefined) {
-          updatedTodos[todoIndex].subtasks[subIndex].image = uri;
-        } else if (!forSubtask && todoIndex !== undefined) {
-          updatedTodos[todoIndex].image = uri;
-          if (taskEditorIndex === todoIndex && taskEditorSource === "active") {
-            setTaskEditorSnapshot((prev) =>
-              prev ? { ...prev, image: uri } : prev
-            );
+          saveAll(todos, updatedArchived);
+        } else {
+          const updatedTodos = [...todos];
+          if (forSubtask && todoIndex !== undefined && subIndex !== undefined) {
+            updatedTodos[todoIndex].subtasks[subIndex].image = uri;
+          } else if (!forSubtask && todoIndex !== undefined) {
+            updatedTodos[todoIndex].image = uri;
+            if (
+              taskEditorIndex === todoIndex &&
+              taskEditorSource === "active"
+            ) {
+              setTaskEditorSnapshot((prev) =>
+                prev ? { ...prev, image: uri } : prev
+              );
+            }
           }
+          saveAll(updatedTodos, archivedTodos);
         }
-        saveAll(updatedTodos, archivedTodos);
-      }
-    };
+      };
 
-    try {
-      if (Platform.OS === "web") {
-        // Web: vraag galerij-permissie en gebruik launchImageLibraryAsync
-        const permissionResult =
-          await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permissionResult.granted) {
-          alert("Toegang tot je galerij is nodig!");
+      try {
+        if (Platform.OS === "web") {
+          const permissionResult =
+            await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!permissionResult.granted) {
+            alert("Toegang tot je galerij is nodig!");
+            return;
+          }
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            quality: 0.7,
+          });
+          if (!result.canceled) {
+            const uri = result.assets[0].uri;
+            applyImageUpdate(uri);
+          }
           return;
         }
-        const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.7,
-        });
+
+        const permissionResult = fromGallery
+          ? await ImagePicker.requestMediaLibraryPermissionsAsync()
+          : await ImagePicker.requestCameraPermissionsAsync();
+
+        if (!permissionResult.granted) {
+          alert(
+            fromGallery
+              ? "Toegang tot je galerij is nodig!"
+              : "Camera toegang is nodig!"
+          );
+          return;
+        }
+
+        const result = fromGallery
+          ? await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              quality: 0.7,
+            })
+          : await ImagePicker.launchCameraAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              quality: 0.7,
+            });
+
         if (!result.canceled) {
           const uri = result.assets[0].uri;
           applyImageUpdate(uri);
         }
-        return;
+      } catch (e) {
+        console.log("Image pick error:", e);
       }
-
-      // Native: vraag camera of galerij permissie afhankelijk van fromGallery
-      const permissionResult = fromGallery
-        ? await ImagePicker.requestMediaLibraryPermissionsAsync()
-        : await ImagePicker.requestCameraPermissionsAsync();
-
-      if (!permissionResult.granted) {
-        alert(
-          fromGallery
-            ? "Toegang tot je galerij is nodig!"
-            : "Camera toegang is nodig!"
-        );
-        return;
-      }
-
-      const result = fromGallery
-        ? await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            quality: 0.7,
-          })
-        : await ImagePicker.launchCameraAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            quality: 0.7,
-          });
-
-      if (!result.canceled) {
-        const uri = result.assets[0].uri;
-        applyImageUpdate(uri);
-      }
-    } catch (e) {
-      console.log("Image pick error:", e);
-    }
-  };
+    },
+    [archivedTodos, saveAll, taskEditorIndex, taskEditorSource, todos]
+  );
 
   // Logout: bewaar eerst naar firebase, daarna sign out
-  const logout = async () => {
+  const logout = useCallback(async () => {
     if (!userId) return;
     await syncGeofenceTargets(userId, []);
     await clearGeofenceTaskState(userId);
     await saveTodosFirebase(userId, todos, archivedTodos);
     await signOut(FIREBASE_AUTH);
-  };
+  }, [archivedTodos, todos, userId]);
 
   // Parsers voor web prompt inputs (ondersteunt meerdere formaten)
   const parseDateInput = (input: string | null) => {
@@ -1358,179 +1503,193 @@ const List: React.FC<ListScreenProps> = ({
     setShowSubtaskTimePicker(true);
   };
 
-  const openLocationPicker = async (
-    todoIndex?: number,
-    source: ListSource = "active",
-    subtaskIndex: number | null = null
-  ) => {
-    if (Platform.OS === "web") {
-      showInputWarning(
-        language === "nl"
-          ? "Locatieselectie wordt op web momenteel niet ondersteund."
-          : "Location picking is not supported on web."
-      );
-      return;
-    }
+  const openLocationPicker = useCallback(
+    async (
+      todoIndex?: number,
+      source: ListSource = "active",
+      subtaskIndex: number | null = null
+    ) => {
+      if (Platform.OS === "web") {
+        showInputWarning(
+          language === "nl"
+            ? "Locatieselectie wordt op web momenteel niet ondersteund."
+            : "Location picking is not supported on web."
+        );
+        return;
+      }
 
-    const editingIndex = typeof todoIndex === "number" ? todoIndex : null;
+      const editingIndex = typeof todoIndex === "number" ? todoIndex : null;
 
-    const sourceList = source === "archive" ? archivedTodos : todos;
-    let seededLocation: LatLng | null = null;
-    let seededDescription: string | null = null;
-    let seededRegion: Region = { ...DEFAULT_REGION };
+      const sourceList = source === "archive" ? archivedTodos : todos;
+      let seededLocation: LatLng | null = null;
+      let seededDescription: string | null = null;
+      let seededRegion: Region = { ...DEFAULT_REGION };
 
-    if (editingIndex !== null) {
-      if (typeof subtaskIndex === "number") {
-        if (subtaskIndex === NEW_SUBTASK_LOCATION_INDEX) {
-          if (newSubtaskLocation) {
-            seededLocation = { ...newSubtaskLocation };
-            seededDescription = newSubtaskLocationDescription ?? null;
+      if (editingIndex !== null) {
+        if (typeof subtaskIndex === "number") {
+          if (subtaskIndex === NEW_SUBTASK_LOCATION_INDEX) {
+            if (newSubtaskLocation) {
+              seededLocation = { ...newSubtaskLocation };
+              seededDescription = newSubtaskLocationDescription ?? null;
+            }
+          } else {
+            const existingSub =
+              sourceList[editingIndex]?.subtasks[subtaskIndex];
+            if (existingSub?.location) {
+              seededLocation = { ...existingSub.location };
+              seededDescription = existingSub.locationDescription ?? null;
+            }
           }
         } else {
-          const existingSub = sourceList[editingIndex]?.subtasks[subtaskIndex];
-          if (existingSub?.location) {
-            seededLocation = { ...existingSub.location };
-            seededDescription = existingSub.locationDescription ?? null;
+          const existing = sourceList[editingIndex]?.location;
+          if (existing) {
+            seededLocation = { ...existing };
+            seededDescription =
+              sourceList[editingIndex]?.locationDescription ?? null;
           }
         }
-      } else {
-        const existing = sourceList[editingIndex]?.location;
-        if (existing) {
-          seededLocation = { ...existing };
-          seededDescription =
-            sourceList[editingIndex]?.locationDescription ?? null;
-        }
       }
-    }
 
-    if (!seededLocation && selectedLocation) {
-      seededLocation = {
-        latitude: selectedLocation.latitude,
-        longitude: selectedLocation.longitude,
-      };
-      seededDescription = selectedLocationDescription;
-    } else if (!seededLocation && mapRegion) {
-      seededLocation = {
-        latitude: mapRegion.latitude,
-        longitude: mapRegion.longitude,
-      };
-    }
+      if (!seededLocation && selectedLocation) {
+        seededLocation = {
+          latitude: selectedLocation.latitude,
+          longitude: selectedLocation.longitude,
+        };
+        seededDescription = selectedLocationDescription;
+      } else if (!seededLocation && mapRegion) {
+        seededLocation = {
+          latitude: mapRegion.latitude,
+          longitude: mapRegion.longitude,
+        };
+      }
 
-    if (seededLocation) {
-      seededRegion = {
-        latitude: seededLocation.latitude,
-        longitude: seededLocation.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      };
-    }
+      if (seededLocation) {
+        seededRegion = {
+          latitude: seededLocation.latitude,
+          longitude: seededLocation.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        };
+      }
 
-    setEditingLocationTodoIndex(editingIndex);
-    setEditingLocationSource(source);
-    setEditingLocationSubtaskIndex(
-      typeof subtaskIndex === "number" ? subtaskIndex : null
-    );
-    setLocationHelperMessage(null);
-    setLocationLoading(true);
-    setLocationSearchText("");
-    setLocationModalVisible(true);
+      setEditingLocationTodoIndex(editingIndex);
+      setEditingLocationSource(source);
+      setEditingLocationSubtaskIndex(
+        typeof subtaskIndex === "number" ? subtaskIndex : null
+      );
+      setLocationHelperMessage(null);
+      setLocationLoading(true);
+      setLocationSearchText("");
+      setLocationModalVisible(true);
 
-    let workingLocation = seededLocation ? { ...seededLocation } : null;
-    let workingRegion = { ...seededRegion };
+      let workingLocation = seededLocation ? { ...seededLocation } : null;
+      let workingRegion = { ...seededRegion };
 
-    try {
-      const servicesEnabled =
-        (await Location.hasServicesEnabledAsync?.()) ?? true;
-      if (!servicesEnabled) {
-        setLocationHelperMessage(
-          language === "nl"
-            ? "Locatieservices staan uit. Kies handmatig een locatie op de kaart."
-            : "Location services are disabled. Select a location manually on the map."
-        );
-      } else if (
-        Location?.requestForegroundPermissionsAsync &&
-        Location?.getCurrentPositionAsync
-      ) {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        setLocationPermissionGranted(status === "granted");
-        if (status === "granted") {
-          try {
-            const lastKnown = await Location.getLastKnownPositionAsync();
-            const current =
-              lastKnown ??
-              (await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.Balanced,
-              }));
-            if (!workingLocation) {
-              workingLocation = {
-                latitude: current.coords.latitude,
-                longitude: current.coords.longitude,
-              };
-              workingRegion = {
-                latitude: workingLocation.latitude,
-                longitude: workingLocation.longitude,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              };
+      try {
+        const servicesEnabled =
+          (await Location.hasServicesEnabledAsync?.()) ?? true;
+        if (!servicesEnabled) {
+          setLocationHelperMessage(
+            language === "nl"
+              ? "Locatieservices staan uit. Kies handmatig een locatie op de kaart."
+              : "Location services are disabled. Select a location manually on the map."
+          );
+        } else if (
+          Location?.requestForegroundPermissionsAsync &&
+          Location?.getCurrentPositionAsync
+        ) {
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          setLocationPermissionGranted(status === "granted");
+          if (status === "granted") {
+            try {
+              const lastKnown = await Location.getLastKnownPositionAsync();
+              const current =
+                lastKnown ??
+                (await Location.getCurrentPositionAsync({
+                  accuracy: Location.Accuracy.Balanced,
+                }));
+              if (!workingLocation) {
+                workingLocation = {
+                  latitude: current.coords.latitude,
+                  longitude: current.coords.longitude,
+                };
+                workingRegion = {
+                  latitude: workingLocation.latitude,
+                  longitude: workingLocation.longitude,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                };
+              }
+            } catch (err) {
+              console.log("Kon huidige locatie niet ophalen:", err);
+              setLocationHelperMessage(
+                language === "nl"
+                  ? "Kon huidige locatie niet ophalen. Kies handmatig een locatie."
+                  : "Unable to fetch current location. Please pick a spot manually."
+              );
             }
-          } catch (err) {
-            console.log("Kon huidige locatie niet ophalen:", err);
+          } else {
             setLocationHelperMessage(
               language === "nl"
-                ? "Kon huidige locatie niet ophalen. Kies handmatig een locatie."
-                : "Unable to fetch current location. Please pick a spot manually."
+                ? "Locatietoegang geweigerd. Kies handmatig een locatie op de kaart."
+                : "Location access denied. Select a location manually on the map."
             );
           }
         } else {
           setLocationHelperMessage(
             language === "nl"
-              ? "Locatietoegang geweigerd. Kies handmatig een locatie op de kaart."
-              : "Location access denied. Select a location manually on the map."
+              ? "expo-location niet beschikbaar. Kies handmatig een locatie op de kaart."
+              : "expo-location unavailable. Select a location manually on the map."
           );
         }
-      } else {
+
+        setMapRegion(workingRegion);
+        if (workingLocation) {
+          setSelectedLocation({ ...workingLocation });
+        } else {
+          setSelectedLocation(
+            (prev) =>
+              prev ?? {
+                latitude: workingRegion.latitude,
+                longitude: workingRegion.longitude,
+              }
+          );
+        }
+        setSelectedLocationDescription(seededDescription ?? null);
+      } catch (err) {
+        console.log("Locatie ophalen mislukt:", err);
+        const fallbackRegion = workingLocation
+          ? {
+              latitude: workingLocation.latitude,
+              longitude: workingLocation.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            }
+          : { ...DEFAULT_REGION };
+        setMapRegion(fallbackRegion);
+        setSelectedLocation(workingLocation ? { ...workingLocation } : null);
+        setSelectedLocationDescription(seededDescription ?? null);
         setLocationHelperMessage(
           language === "nl"
-            ? "expo-location niet beschikbaar. Kies handmatig een locatie op de kaart."
-            : "expo-location unavailable. Select a location manually on the map."
+            ? "Locatie ophalen mislukt."
+            : "Failed to fetch location."
         );
+      } finally {
+        setLocationLoading(false);
       }
-
-      setMapRegion(workingRegion);
-      if (workingLocation) {
-        setSelectedLocation({ ...workingLocation });
-      } else {
-        setSelectedLocation(
-          (prev) =>
-            prev ?? {
-              latitude: workingRegion.latitude,
-              longitude: workingRegion.longitude,
-            }
-        );
-      }
-      setSelectedLocationDescription(seededDescription ?? null);
-    } catch (err) {
-      console.log("Locatie ophalen mislukt:", err);
-      const fallbackRegion = workingLocation
-        ? {
-            latitude: workingLocation.latitude,
-            longitude: workingLocation.longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          }
-        : { ...DEFAULT_REGION };
-      setMapRegion(fallbackRegion);
-      setSelectedLocation(workingLocation ? { ...workingLocation } : null);
-      setSelectedLocationDescription(seededDescription ?? null);
-      setLocationHelperMessage(
-        language === "nl"
-          ? "Locatie ophalen mislukt."
-          : "Failed to fetch location."
-      );
-    } finally {
-      setLocationLoading(false);
-    }
-  };
+    },
+    [
+      archivedTodos,
+      language,
+      mapRegion,
+      newSubtaskLocation,
+      newSubtaskLocationDescription,
+      selectedLocation,
+      selectedLocationDescription,
+      showInputWarning,
+      todos,
+    ]
+  );
 
   const openInlineSubtaskLocation = useCallback(
     (todoIndex: number, source: ListSource) => {
@@ -1661,7 +1820,7 @@ const List: React.FC<ListScreenProps> = ({
       setLocationLoading(true);
       const results = await Location.geocodeAsync(query);
       if (!results.length) {
-        setLocationHelperMessage(translations[language].searchAddressNoResult);
+        setLocationHelperMessage(strings.searchAddressNoResult);
         return;
       }
       const best = results[0];
@@ -1679,38 +1838,38 @@ const List: React.FC<ListScreenProps> = ({
       setLocationHelperMessage(null);
     } catch (error) {
       console.log("Address geocode failed:", error);
-      setLocationHelperMessage(translations[language].searchAddressError);
+      setLocationHelperMessage(strings.searchAddressError);
     } finally {
       setLocationLoading(false);
     }
   };
-  const openArchivedLocation = (
-    location: LatLng,
-    description?: string | null
-  ) => {
-    if (Platform.OS === "web") {
-      showInputWarning(
-        language === "nl"
-          ? "Locatieselectie wordt op web momenteel niet ondersteund."
-          : "Location picking is not supported on web."
-      );
-      return;
-    }
-    setEditingLocationTodoIndex(null);
-    setEditingLocationSubtaskIndex(null);
-    setSelectedLocation({ ...location });
-    setSelectedLocationDescription(description ?? null);
-    setMapRegion({
-      latitude: location.latitude,
-      longitude: location.longitude,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
-    });
-    setLocationHelperMessage(null);
-    setLocationLoading(false);
-    setLocationSearchText("");
-    setLocationModalVisible(true);
-  };
+  const openArchivedLocation = useCallback(
+    (location: LatLng, description?: string | null) => {
+      if (Platform.OS === "web") {
+        showInputWarning(
+          language === "nl"
+            ? "Locatieselectie wordt op web momenteel niet ondersteund."
+            : "Location picking is not supported on web."
+        );
+        return;
+      }
+      setEditingLocationTodoIndex(null);
+      setEditingLocationSubtaskIndex(null);
+      setSelectedLocation({ ...location });
+      setSelectedLocationDescription(description ?? null);
+      setMapRegion({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+      setLocationHelperMessage(null);
+      setLocationLoading(false);
+      setLocationSearchText("");
+      setLocationModalVisible(true);
+    },
+    [language, showInputWarning]
+  );
   const updateSelectedLocation = (coord: LatLng) => {
     setSelectedLocation(coord);
     setSelectedLocationDescription(null);
@@ -2061,38 +2220,44 @@ const List: React.FC<ListScreenProps> = ({
         editingSubtask.locationDescription ?? null
       )
     : "";
-  const subtaskModalStrings = {
-    editSubtask: translations[language].editSubtask,
-    subtaskName: translations[language].subtaskName,
-    clearDeadline: translations[language].clearDeadline,
-    noDeadline: translations[language].noDeadline,
-    addPhoto: translations[language].addPhoto,
-    noPhoto: translations[language].noPhoto,
-    pickFromGallery: translations[language].pickFromGallery,
-    removePhoto: translations[language].removePhoto,
-    locationLabel: translations[language].locationLabel,
-    noLocationSelected: translations[language].noLocationSelected,
-    updateLocation: translations[language].updateLocation,
-    removeLocation: translations[language].removeLocation,
-    cancel: translations[language].cancel,
-    saveChanges: translations[language].saveChanges,
-  } as const;
-  const taskModalStrings = {
-    editTask: translations[language].editTask,
-    taskName: translations[language].taskName,
-    clearDeadline: translations[language].clearDeadline,
-    noDeadline: translations[language].noDeadline,
-    addPhoto: translations[language].addPhoto,
-    noPhoto: translations[language].noPhoto,
-    pickFromGallery: translations[language].pickFromGallery,
-    removePhoto: translations[language].removePhoto,
-    locationLabel: translations[language].locationLabel,
-    noLocationSelected: translations[language].noLocationSelected,
-    updateLocation: translations[language].updateLocation,
-    removeLocation: translations[language].removeLocation,
-    cancel: translations[language].cancel,
-    saveChanges: translations[language].saveChanges,
-  } as const;
+  const subtaskModalStrings = useMemo(
+    () => ({
+      editSubtask: strings.editSubtask,
+      subtaskName: strings.subtaskName,
+      clearDeadline: strings.clearDeadline,
+      noDeadline: strings.noDeadline,
+      addPhoto: strings.addPhoto,
+      noPhoto: strings.noPhoto,
+      pickFromGallery: strings.pickFromGallery,
+      removePhoto: strings.removePhoto,
+      locationLabel: strings.locationLabel,
+      noLocationSelected: strings.noLocationSelected,
+      updateLocation: strings.updateLocation,
+      removeLocation: strings.removeLocation,
+      cancel: strings.cancel,
+      saveChanges: strings.saveChanges,
+    }),
+    [strings]
+  );
+  const taskModalStrings = useMemo(
+    () => ({
+      editTask: strings.editTask,
+      taskName: strings.taskName,
+      clearDeadline: strings.clearDeadline,
+      noDeadline: strings.noDeadline,
+      addPhoto: strings.addPhoto,
+      noPhoto: strings.noPhoto,
+      pickFromGallery: strings.pickFromGallery,
+      removePhoto: strings.removePhoto,
+      locationLabel: strings.locationLabel,
+      noLocationSelected: strings.noLocationSelected,
+      updateLocation: strings.updateLocation,
+      removeLocation: strings.removeLocation,
+      cancel: strings.cancel,
+      saveChanges: strings.saveChanges,
+    }),
+    [strings]
+  );
   const handleSubtaskEditorPickCamera = () => {
     if (subtaskEditorParentIndex === null || subtaskEditorIndex === null) {
       return;
@@ -2195,13 +2360,9 @@ const List: React.FC<ListScreenProps> = ({
         theme={theme}
         sortOrder={sortOrder}
         prioritySort={prioritySort}
-        title={
-          showArchive
-            ? translations[language].archive
-            : translations[language].tasks
-        }
-        tasksLabel={translations[language].tasks}
-        archiveLabel={translations[language].archive}
+        title={showArchive ? strings.archive : strings.tasks}
+        tasksLabel={strings.tasks}
+        archiveLabel={strings.archive}
         onToggleLanguage={toggleLanguage}
         onToggleTheme={toggleTheme}
         onToggleSortOrder={toggleSortOrder}
@@ -2305,7 +2466,7 @@ const List: React.FC<ListScreenProps> = ({
             onOpenTime={openTaskTime}
             onOpenLocation={() => openLocationPicker()}
             onAdd={addTodo}
-            placeholder={translations[language].addTask}
+            placeholder={strings.addTask}
             locationAccessibility={{
               label: language === "nl" ? "Locatie instellen" : "Set location",
               hint:
@@ -2366,7 +2527,7 @@ const List: React.FC<ListScreenProps> = ({
           <ActiveTodoList
             colors={colors}
             language={language}
-            strings={translations[language]}
+            strings={strings}
             displayTodos={activeDisplayTodos}
             buildSubtaskDisplay={buildSubtaskDisplay}
             formatDate={formatDate}
@@ -2407,7 +2568,7 @@ const List: React.FC<ListScreenProps> = ({
             onOpenTime={openTaskTime}
             onOpenLocation={() => openLocationPicker(undefined, "archive")}
             onAdd={() => addTodo("archive")}
-            placeholder={translations[language].addTask}
+            placeholder={strings.addTask}
             locationAccessibility={{
               label: language === "nl" ? "Locatie instellen" : "Set location",
               hint:
@@ -2468,7 +2629,7 @@ const List: React.FC<ListScreenProps> = ({
           <ArchivedTodoList
             colors={colors}
             language={language}
-            strings={translations[language]}
+            strings={strings}
             displayTodos={archivedDisplayTodos}
             buildSubtaskDisplay={buildSubtaskDisplay}
             formatDate={formatDate}
@@ -2511,7 +2672,7 @@ const List: React.FC<ListScreenProps> = ({
         }}
       >
         <Text style={{ color: "#fff", fontWeight: "600" }}>
-          {translations[language].logout}
+          {strings.logout}
         </Text>
       </TouchableOpacity>
     </View>

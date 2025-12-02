@@ -14,6 +14,7 @@ import DateTimePicker, {
 import type { ThemeColors } from "../theme";
 import type { LatLng, Todo } from "../types";
 
+// Strings om de modal in meerdere talen te ondersteunen
 type TaskStrings = {
   editTask: string;
   taskName: string;
@@ -31,6 +32,7 @@ type TaskStrings = {
   saveChanges: string;
 };
 
+// Props van de bewerkingsmodal
 type TaskEditorModalProps = {
   visible: boolean;
   colors: ThemeColors;
@@ -84,6 +86,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
   locationDescription = "",
   strings,
 }) => {
+  // Modal niets tonen wanneer deze niet zichtbaar is
   if (!visible || !editingTodo) {
     return null;
   }
@@ -95,12 +98,12 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
       transparent
       animationType="slide"
       visible={visible}
-      onRequestClose={onClose}
+      onRequestClose={onClose} // Android back-knop
     >
       <View
         style={{
           flex: 1,
-          backgroundColor: "rgba(0,0,0,0.5)",
+          backgroundColor: "rgba(0,0,0,0.5)", // achtergrond overlay
           justifyContent: "center",
         }}
       >
@@ -112,6 +115,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
             padding: 16,
           }}
         >
+          {/* Titel */}
           <Text
             style={{
               fontSize: 18,
@@ -122,6 +126,8 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
           >
             {strings.editTask}
           </Text>
+
+          {/* Taaknaam */}
           <Text
             style={{
               fontSize: 14,
@@ -146,6 +152,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
             }}
           />
 
+          {/* Deadline knoppen */}
           <View
             style={{
               flexDirection: "row",
@@ -164,6 +171,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
             >
               <Text style={{ color: "#fff", fontSize: 16 }}>📅</Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               onPress={onOpenTime}
               style={{
@@ -175,22 +183,20 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
             >
               <Text style={{ color: "#fff", fontSize: 16 }}>⏰</Text>
             </TouchableOpacity>
+
             <TouchableOpacity onPress={onClearDeadline}>
               <Text style={{ color: colors.deleteButton }}>
                 {strings.clearDeadline}
               </Text>
             </TouchableOpacity>
           </View>
-          <Text
-            style={{
-              marginTop: 8,
-              color: colors.text,
-              fontSize: 14,
-            }}
-          >
+
+          {/* Deadline tekst */}
+          <Text style={{ marginTop: 8, color: colors.text, fontSize: 14 }}>
             {deadlinePreview || strings.noDeadline}
           </Text>
 
+          {/* Datum- en tijdpicker (niet op web) */}
           {showDatePicker && Platform.OS !== "web" && (
             <DateTimePicker
               value={dateValue ?? new Date()}
@@ -199,7 +205,6 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
               onChange={onChangeDate}
             />
           )}
-
           {showTimePicker && Platform.OS !== "web" && (
             <DateTimePicker
               value={timeValue ?? new Date()}
@@ -209,6 +214,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
             />
           )}
 
+          {/* Foto sectie */}
           <View style={{ marginTop: 16 }}>
             <Text
               style={{
@@ -220,6 +226,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
             >
               {strings.addPhoto}
             </Text>
+
             {editingTodo.image ? (
               <Image
                 source={{ uri: editingTodo.image }}
@@ -235,6 +242,8 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
                 {strings.noPhoto}
               </Text>
             )}
+
+            {/* Fotoknoppen */}
             <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
               <TouchableOpacity
                 onPress={onPickCamera}
@@ -244,6 +253,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
                   📷 {strings.addPhoto}
                 </Text>
               </TouchableOpacity>
+
               <TouchableOpacity
                 onPress={onPickGallery}
                 style={{ marginRight: 12, marginBottom: 8 }}
@@ -252,6 +262,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
                   🖼️ {strings.pickFromGallery}
                 </Text>
               </TouchableOpacity>
+
               {editingTodo.image && (
                 <TouchableOpacity
                   onPress={onRemoveImage}
@@ -265,6 +276,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
             </View>
           </View>
 
+          {/* Locatie sectie */}
           <View style={{ marginTop: 16 }}>
             <Text
               style={{
@@ -276,15 +288,16 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
             >
               {strings.locationLabel}
             </Text>
-            {location ? (
-              <Text style={{ color: colors.text, marginBottom: 8 }}>
-                {locationDescription || strings.noLocationSelected}
-              </Text>
-            ) : (
-              <Text style={{ color: colors.placeholder, marginBottom: 8 }}>
-                {strings.noLocationSelected}
-              </Text>
-            )}
+
+            <Text
+              style={{
+                color: location ? colors.text : colors.placeholder,
+                marginBottom: 8,
+              }}
+            >
+              {locationDescription || strings.noLocationSelected}
+            </Text>
+
             <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
               <TouchableOpacity
                 onPress={onUpdateLocation}
@@ -294,6 +307,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
                   📍 {strings.updateLocation}
                 </Text>
               </TouchableOpacity>
+
               {location && (
                 <TouchableOpacity
                   onPress={onRemoveLocation}
@@ -307,6 +321,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
             </View>
           </View>
 
+          {/* Actieknoppen */}
           <View
             style={{
               flexDirection: "row",
@@ -327,6 +342,7 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
                 {strings.cancel}
               </Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               onPress={onSave}
               style={{

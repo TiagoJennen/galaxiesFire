@@ -1,5 +1,6 @@
-import React from "react";
-import { FlatList, Image, Text, TouchableOpacity, View } from "react-native";
+import React, { memo } from "react";
+import { Image, Text, TouchableOpacity, View } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
 import InlineSubtaskEditor from "./InlineSubtaskEditor";
 import type { ThemeColors } from "../theme";
@@ -100,9 +101,10 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
   openSubtaskTime,
 }) => {
   return (
-    <FlatList
+    <FlashList
       data={displayTodos}
       keyExtractor={(entry) => entry.originalIndex.toString()}
+      estimatedItemSize={320}
       renderItem={({ item: displayEntry }) => {
         const item = displayEntry.item;
         const originalIndex = displayEntry.originalIndex;
@@ -501,4 +503,4 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
   );
 };
 
-export default ActiveTodoList;
+export default memo(ActiveTodoList);

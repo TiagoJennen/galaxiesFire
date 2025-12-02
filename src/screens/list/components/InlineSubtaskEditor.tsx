@@ -2,25 +2,29 @@ import React from "react";
 import { View, TextInput, TouchableOpacity, Text } from "react-native";
 import type { ThemeColors } from "../theme";
 
+// Mogelijke prioriteiten voor een subtask
 export type SubtaskPriority = "low" | "medium" | "high";
 
+// Props voor de inline subtask editor
 type InlineSubtaskEditorProps = {
-  text: string;
-  onChangeText: (value: string) => void;
-  priority: SubtaskPriority;
-  onSelectPriority: (value: SubtaskPriority) => void;
-  onOpenDate: () => void;
-  onOpenTime: () => void;
-  onOpenLocation: () => void;
-  onAdd: () => void;
-  colors: ThemeColors;
-  placeholder: string;
+  text: string; // Tekst van de subtask
+  onChangeText: (value: string) => void; // Callback bij tekstwijziging
+  priority: SubtaskPriority; // Geselecteerde prioriteit
+  onSelectPriority: (value: SubtaskPriority) => void; // Callback bij prioriteit wijziging
+  onOpenDate: () => void; // Open datum picker
+  onOpenTime: () => void; // Open tijd picker
+  onOpenLocation: () => void; // Open locatie selector
+  onAdd: () => void; // Callback bij toevoegen subtask
+  colors: ThemeColors; // Kleuren van het thema
+  placeholder: string; // Placeholder tekst voor TextInput
   accessibilityLabels: {
+    // Toegankelijkheidslabels
     locationLabel: string;
     locationHint: string;
   };
 };
 
+// Knoppen voor prioriteit selecteren
 const PRIORITY_BUTTONS: Array<{
   label: string;
   value: SubtaskPriority;
@@ -52,6 +56,7 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
       alignItems: "center",
     }}
   >
+    {/* TextInput voor subtask */}
     <TextInput
       placeholder={placeholder}
       value={text}
@@ -65,6 +70,8 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
       }}
       placeholderTextColor={colors.placeholder}
     />
+
+    {/* Prioriteit knoppen */}
     <View style={{ flexDirection: "row", marginLeft: 5 }}>
       {PRIORITY_BUTTONS.map((button, index) => (
         <TouchableOpacity
@@ -84,6 +91,8 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
         </TouchableOpacity>
       ))}
     </View>
+
+    {/* Datum picker knop */}
     <TouchableOpacity
       onPress={onOpenDate}
       style={{
@@ -97,6 +106,8 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
     >
       <Text style={{ color: "#fff" }}>📅</Text>
     </TouchableOpacity>
+
+    {/* Tijd picker knop */}
     <TouchableOpacity
       onPress={onOpenTime}
       style={{
@@ -110,6 +121,8 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
     >
       <Text style={{ color: "#fff" }}>⏰</Text>
     </TouchableOpacity>
+
+    {/* Locatie knop */}
     <TouchableOpacity
       onPress={onOpenLocation}
       accessibilityLabel={accessibilityLabels.locationLabel}
@@ -125,6 +138,8 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
     >
       <Text style={{ color: "#fff" }}>📍</Text>
     </TouchableOpacity>
+
+    {/* Voeg subtask toe knop */}
     <TouchableOpacity
       onPress={onAdd}
       style={{

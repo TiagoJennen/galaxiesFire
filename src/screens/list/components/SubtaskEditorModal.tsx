@@ -14,6 +14,7 @@ import DateTimePicker, {
 import type { ThemeColors } from "../theme";
 import type { SubTodo, LatLng } from "../types";
 
+// Strings die gebruikt worden in de UI van de subtask editor
 type SubtaskStrings = {
   editSubtask: string;
   subtaskName: string;
@@ -31,6 +32,7 @@ type SubtaskStrings = {
   saveChanges: string;
 };
 
+// Props voor de SubtaskEditorModal
 type SubtaskEditorModalProps = {
   visible: boolean;
   colors: ThemeColors;
@@ -86,6 +88,7 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
   locationDescription = "",
   strings,
 }) => {
+  // Modal niet renderen als niet zichtbaar of er geen subtask is
   if (!visible || !editingSubtask) {
     return null;
   }
@@ -104,6 +107,7 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
           justifyContent: "center",
         }}
       >
+        {/* Container voor de editor */}
         <View
           style={{
             margin: 20,
@@ -112,6 +116,7 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
             padding: 16,
           }}
         >
+          {/* Titel */}
           <Text
             style={{
               fontSize: 18,
@@ -122,6 +127,8 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
           >
             {strings.editSubtask}
           </Text>
+
+          {/* Label en input voor subtask tekst */}
           <Text
             style={{
               fontSize: 14,
@@ -146,6 +153,7 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
             }}
           />
 
+          {/* Knoppen voor datum, tijd en deadline verwijderen */}
           <View
             style={{
               flexDirection: "row",
@@ -181,6 +189,8 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Weergave van gekozen deadline */}
           <Text
             style={{
               marginTop: 8,
@@ -191,6 +201,7 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
             {deadlinePreview || strings.noDeadline}
           </Text>
 
+          {/* DatePicker */}
           {showDatePicker && Platform.OS !== "web" && (
             <DateTimePicker
               value={dateValue ?? new Date()}
@@ -200,6 +211,7 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
             />
           )}
 
+          {/* TimePicker */}
           {showTimePicker && Platform.OS !== "web" && (
             <DateTimePicker
               value={timeValue ?? new Date()}
@@ -209,6 +221,7 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
             />
           )}
 
+          {/* Foto sectie */}
           <View style={{ marginTop: 16 }}>
             <Text
               style={{
@@ -265,6 +278,7 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
             </View>
           </View>
 
+          {/* Locatie sectie */}
           <View style={{ marginTop: 16 }}>
             <Text
               style={{
@@ -307,6 +321,7 @@ const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
             </View>
           </View>
 
+          {/* Actie knoppen: cancel en save */}
           <View
             style={{
               flexDirection: "row",

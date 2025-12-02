@@ -2,21 +2,22 @@ import React from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import type { ThemeColors } from "../theme";
 
+// Props voor de header controls
 type ListHeaderControlsProps = {
   colors: ThemeColors;
-  showArchive: boolean;
+  showArchive: boolean; // Of het archief-tabblad actief is
   language: "nl" | "en";
   theme: "light" | "dark";
-  sortOrder: "oldest" | "newest";
-  prioritySort: "highToLow" | "lowToHigh";
-  title: string;
-  tasksLabel: string;
-  archiveLabel: string;
-  onToggleLanguage: () => void;
-  onToggleTheme: () => void;
-  onToggleSortOrder: () => void;
-  onTogglePrioritySort: () => void;
-  onSelectTab: (tab: "tasks" | "archive") => void;
+  sortOrder: "oldest" | "newest"; // Sorteervolgorde op datum
+  prioritySort: "highToLow" | "lowToHigh"; // Sorteervolgorde op prioriteit
+  title: string; // Titel van de lijst
+  tasksLabel: string; // Label voor taken-tab
+  archiveLabel: string; // Label voor archief-tab
+  onToggleLanguage: () => void; // Toggle taal
+  onToggleTheme: () => void; // Toggle thema
+  onToggleSortOrder: () => void; // Toggle datum sorteer volgorde
+  onTogglePrioritySort: () => void; // Toggle prioriteit sorteer volgorde
+  onSelectTab: (tab: "tasks" | "archive") => void; // Tab selecteren
 };
 
 const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
@@ -36,6 +37,7 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
   onSelectTab,
 }) => (
   <>
+    {/* Header titel + knoppen */}
     <View
       style={{
         flexDirection: "row",
@@ -48,6 +50,7 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
         {title}
       </Text>
       <View style={{ flexDirection: "row" }}>
+        {/* Taal toggle */}
         <TouchableOpacity
           onPress={onToggleLanguage}
           style={{
@@ -61,6 +64,8 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
             {language.toUpperCase()}
           </Text>
         </TouchableOpacity>
+
+        {/* Thema toggle */}
         <TouchableOpacity
           onPress={onToggleTheme}
           style={{
@@ -73,6 +78,8 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
             {theme === "light" ? "🌙" : "☀️"}
           </Text>
         </TouchableOpacity>
+
+        {/* Datum sorteer toggle */}
         <TouchableOpacity
           onPress={onToggleSortOrder}
           style={{
@@ -88,6 +95,8 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
             {sortOrder === "oldest" ? "↓" : "↑"}
           </Text>
         </TouchableOpacity>
+
+        {/* Prioriteit sorteer toggle */}
         <TouchableOpacity
           onPress={onTogglePrioritySort}
           style={{
@@ -106,6 +115,7 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
       </View>
     </View>
 
+    {/* Tabbladen voor taken / archief */}
     <View style={{ flexDirection: "row", marginBottom: 20 }}>
       <TouchableOpacity
         onPress={() => onSelectTab("tasks")}
@@ -122,6 +132,7 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
       >
         <Text style={{ color: "#fff" }}>{tasksLabel}</Text>
       </TouchableOpacity>
+
       <TouchableOpacity
         onPress={() => onSelectTab("archive")}
         style={{

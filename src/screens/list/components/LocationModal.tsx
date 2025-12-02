@@ -14,12 +14,13 @@ import type { ThemeColors } from "../theme";
 import type { LatLng } from "../types";
 import { translations } from "../../../constants/translations";
 
+// Props voor de LocationModal
 type LocationModalProps = {
   visible: boolean;
   colors: ThemeColors;
   language: "nl" | "en";
   theme: "light" | "dark";
-  helperMessage: string | null;
+  helperMessage: string | null; // Eventuele waarschuwing of tip bovenaan
   onDismissHelper: () => void;
   searchText: string;
   onChangeSearchText: (text: string) => void;
@@ -27,10 +28,10 @@ type LocationModalProps = {
   loading: boolean;
   onClear: () => void;
   onConfirm: () => void;
-  mapStyleUrl: string;
+  mapStyleUrl: string; // MapLibre stijl URL
   cameraCenter: [number, number];
   cameraZoom: number;
-  activeMarker: LatLng | null;
+  activeMarker: LatLng | null; // Huidige locatie marker
   onMapPress: (event: any) => void;
   onMarkerDragEnd: (event: any) => void;
 };
@@ -55,18 +56,16 @@ const LocationModal: React.FC<LocationModalProps> = ({
   onMapPress,
   onMarkerDragEnd,
 }) => {
-  if (!visible) {
-    return null;
-  }
+  if (!visible) return null; // Render niet als modal niet zichtbaar
 
-  const t = translations[language];
+  const t = translations[language]; // Gebruik vertalingen
 
   return (
     <Modal
       transparent
       animationType="slide"
       visible={visible}
-      onRequestClose={onConfirm}
+      onRequestClose={onConfirm} // Android back knop
     >
       <View
         style={{
@@ -75,6 +74,7 @@ const LocationModal: React.FC<LocationModalProps> = ({
           justifyContent: "center",
         }}
       >
+        {/* Hoofdcontainer */}
         <View
           style={{
             margin: 20,
@@ -84,6 +84,7 @@ const LocationModal: React.FC<LocationModalProps> = ({
             flex: 0.7,
           }}
         >
+          {/* Helper message (bv. waarschuwing) */}
           {helperMessage && (
             <View
               style={{
@@ -112,7 +113,9 @@ const LocationModal: React.FC<LocationModalProps> = ({
               </TouchableOpacity>
             </View>
           )}
+
           <View style={{ flex: 1 }}>
+            {/* Zoekbalk */}
             <View
               style={{
                 flexDirection: "row",
@@ -159,6 +162,8 @@ const LocationModal: React.FC<LocationModalProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Map */}
             <MapLibreGL.MapView
               style={{ flex: 1 }}
               mapStyle={mapStyleUrl}
@@ -181,6 +186,8 @@ const LocationModal: React.FC<LocationModalProps> = ({
                 />
               )}
             </MapLibreGL.MapView>
+
+            {/* Loading overlay */}
             {loading && (
               <View
                 style={{
@@ -209,6 +216,8 @@ const LocationModal: React.FC<LocationModalProps> = ({
               </View>
             )}
           </View>
+
+          {/* Actieknoppen onderaan */}
           <View
             style={{
               flexDirection: "row",

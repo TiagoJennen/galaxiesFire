@@ -2,8 +2,10 @@ import React from "react";
 import { View, TextInput, TouchableOpacity, Text } from "react-native";
 import type { ThemeColors } from "../theme";
 
+// Prioriteitstype voor een taak
 export type TaskPriority = "low" | "medium" | "high";
 
+// Props voor de TaskCreator component
 type TaskCreatorProps = {
   colors: ThemeColors;
   taskText: string;
@@ -21,6 +23,7 @@ type TaskCreatorProps = {
   };
 };
 
+// Knoppen voor prioriteit met bijbehorende kleuren
 const PRIORITY_BUTTONS: Array<{
   label: string;
   value: TaskPriority;
@@ -51,6 +54,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
       alignItems: "center",
     }}
   >
+    {/* Inputveld voor de taaknaam */}
     <TextInput
       placeholder={placeholder}
       value={taskText}
@@ -65,6 +69,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
       placeholderTextColor={colors.placeholder}
     />
 
+    {/* Prioriteit knoppen */}
     <View style={{ flexDirection: "row", marginLeft: 8 }}>
       {PRIORITY_BUTTONS.map((button, index) => (
         <TouchableOpacity
@@ -85,6 +90,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
       ))}
     </View>
 
+    {/* Knop om datum te kiezen */}
     <TouchableOpacity
       onPress={onOpenDate}
       style={{
@@ -99,6 +105,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
       <Text style={{ color: "#fff" }}>📅</Text>
     </TouchableOpacity>
 
+    {/* Knop om tijd te kiezen */}
     <TouchableOpacity
       onPress={onOpenTime}
       style={{
@@ -113,6 +120,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
       <Text style={{ color: "#fff" }}>⏰</Text>
     </TouchableOpacity>
 
+    {/* Knop om locatie te selecteren */}
     <TouchableOpacity
       onPress={onOpenLocation}
       accessibilityLabel={locationAccessibility.label}
@@ -129,6 +137,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
       <Text style={{ color: "#fff" }}>📍</Text>
     </TouchableOpacity>
 
+    {/* Knop om de taak toe te voegen */}
     <TouchableOpacity
       onPress={onAdd}
       style={{
