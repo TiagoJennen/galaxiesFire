@@ -23,6 +23,122 @@ type GeofenceTarget = {
 const targetKey = (userId: string) => `geofence_targets_${userId}`;
 const notifiedKey = (userId: string) => `geofence_notified_${userId}`;
 
+const isWeb = Platform.OS === "web";
+const isNative = Platform.OS === "ios" || Platform.OS === "android";
+
+let webLocationSubscription: Location.LocationSubscription | null = null;
+let webTargets: GeofenceTarget[] = [];
+let webActiveUserId: string | null = null;
+let webProcessingUpdate = false;
+let webNotified = new Set<string>();
+let webNotifiedLoadedFor: string | null = null;
+
+const supportsBrowserNotifications = () =>
+  typeof window !== "undefined" && "Notification" in window;
+
+const requestBrowserNotificationPermission = async (): Promise<boolean> => {
+  if (!supportsBrowserNotifications()) {
+    return false;
+  }
+  if (Notification.permission === "granted") {
+    return true;
+  }
+  if (Notification.permission === "denied") {
+    return false;
+  }
+  try {
+    const result = await Notification.requestPermission();
+    return result === "granted";
+  } catch (error) {
+    console.log("Browser notification permission error:", error);
+    return false;
+  }
+};
+
+const storeWebNotified = async () => {
+  if (!webActiveUserId) {
+    return;
+  }
+  try {
+    await AsyncStorage.setItem(
+      notifiedKey(webActiveUserId),
+      JSON.stringify(Array.from(webNotified))
+    );
+  } catch (error) {
+    console.log("Failed to persist web notified cache:", error);
+  }
+};
+
+const loadWebNotified = async (userId: string) => {
+  if (webNotifiedLoadedFor === userId) {
+    return;
+  }
+  try {
+    const raw = await AsyncStorage.getItem(notifiedKey(userId));
+    if (!raw) {
+      webNotified = new Set();
+    } else {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        webNotified = new Set(
+          parsed.filter((value) => typeof value === "string")
+        );
+      } else {
+        webNotified = new Set();
+      }
+    }
+  } catch (error) {
+    console.log("Failed to read web notified cache:", error);
+    webNotified = new Set();
+  }
+  webNotifiedLoadedFor = userId;
+};
+
+const pruneWebNotified = () => {
+  if (!webActiveUserId || !webTargets.length || !webNotified.size) {
+    return;
+  }
+  let changed = false;
+  webNotified.forEach((id) => {
+    if (!webTargets.some((target) => target.id === id)) {
+      webNotified.delete(id);
+      changed = true;
+    }
+  });
+  if (changed) {
+    storeWebNotified().catch((error) =>
+      console.log("Failed to prune web notified cache:", error)
+    );
+  }
+};
+
+const sendWebNotification = async (
+  title: string,
+  body: string
+): Promise<boolean> => {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: { title, body },
+      trigger: null,
+    });
+    return true;
+  } catch (expoError) {
+    if (
+      supportsBrowserNotifications() &&
+      Notification.permission === "granted"
+    ) {
+      try {
+        new Notification(title, { body });
+        return true;
+      } catch (browserError) {
+        console.log("Browser notification error:", browserError);
+      }
+    }
+    console.log("Failed to schedule web notification:", expoError);
+    return false;
+  }
+};
+
 // Bereken afstand in meters tussen twee coordinaten (haversine formule); nodig om de "binnen bereik"-check te doen.
 const haversineDistance = (
   a: { latitude: number; longitude: number },
@@ -40,34 +156,138 @@ const haversineDistance = (
   return 2 * EARTH_RADIUS * Math.asin(Math.sqrt(h));
 };
 
-// Vraag benodigde foreground en background rechten op voordat we starten.
-// Zonder deze rechten weigert Android de foreground service en vallen geofences stil.
-const ensureGeoPermissions = async () => {
-  if (Platform.OS === "web") return;
-  const foreground = await Location.getForegroundPermissionsAsync();
-  if (foreground.status !== "granted") {
-    const requestedForeground =
-      await Location.requestForegroundPermissionsAsync();
-    if (requestedForeground.status !== "granted") {
-      throw new Error("Foreground location permission not granted");
-    }
+const handleWebLocationUpdate = async (location: Location.LocationObject) => {
+  if (!webActiveUserId || webTargets.length === 0) {
+    return;
   }
-  const getBackground = Location.getBackgroundPermissionsAsync;
-  const requestBackground = Location.requestBackgroundPermissionsAsync;
-  if (getBackground && requestBackground) {
-    const background = await getBackground();
-    if (background.status !== "granted") {
-      const requestedBackground = await requestBackground();
-      if (requestedBackground.status !== "granted") {
-        throw new Error("Background location permission not granted");
+  if (webProcessingUpdate) {
+    return;
+  }
+  webProcessingUpdate = true;
+  try {
+    const current = {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+    };
+    let changed = false;
+    for (const target of webTargets) {
+      if (webNotified.has(target.id)) {
+        continue;
+      }
+      const distance = haversineDistance(current, target);
+      if (distance <= NOTIFICATION_RADIUS_METERS) {
+        const delivered = await sendWebNotification(
+          "Task nearby",
+          `You are close to "${target.title}".`
+        );
+        if (delivered) {
+          webNotified.add(target.id);
+          changed = true;
+        }
       }
     }
+    if (changed) {
+      await storeWebNotified();
+    }
+  } finally {
+    webProcessingUpdate = false;
+  }
+};
+
+// Vraag benodigde foreground en background rechten op voordat we starten.
+// Zonder deze rechten weigert Android de foreground service en vallen geofences stil.
+const ensureGeoPermissions = async (): Promise<boolean> => {
+  if (isWeb) {
+    try {
+      let status = (await Location.getForegroundPermissionsAsync()).status;
+      if (status !== "granted") {
+        status = (await Location.requestForegroundPermissionsAsync()).status;
+      }
+      if (status !== "granted") {
+        return false;
+      }
+    } catch (error) {
+      console.log("Web location permission error:", error);
+      return false;
+    }
+    return true;
+  }
+
+  if (!isNative) {
+    return false;
+  }
+
+  try {
+    let foregroundStatus = (await Location.getForegroundPermissionsAsync())
+      .status;
+    if (foregroundStatus !== "granted") {
+      foregroundStatus = (await Location.requestForegroundPermissionsAsync())
+        .status;
+    }
+    if (foregroundStatus !== "granted") {
+      return false;
+    }
+    const getBackground = Location.getBackgroundPermissionsAsync;
+    const requestBackground = Location.requestBackgroundPermissionsAsync;
+    if (getBackground && requestBackground) {
+      let backgroundStatus = (await getBackground()).status;
+      if (backgroundStatus !== "granted") {
+        backgroundStatus = (await requestBackground()).status;
+      }
+      if (backgroundStatus !== "granted") {
+        return false;
+      }
+    }
+    return true;
+  } catch (error) {
+    console.log("Native location permission error:", error);
+    return false;
+  }
+};
+
+const startWebLocationWatcher = async () => {
+  if (!isWeb || !webTargets.length) {
+    return;
+  }
+  const locationGranted = await ensureGeoPermissions();
+  if (!locationGranted) {
+    return;
+  }
+  const notificationsGranted = await requestBrowserNotificationPermission();
+  if (!notificationsGranted) {
+    return;
+  }
+  if (webLocationSubscription) {
+    return;
+  }
+  try {
+    webLocationSubscription = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.Balanced,
+        timeInterval: 120000,
+        distanceInterval: 50,
+      },
+      (update) => {
+        handleWebLocationUpdate(update).catch((error) =>
+          console.log("Web geofence update error:", error)
+        );
+      }
+    );
+  } catch (error) {
+    console.log("Failed to start web geofence watcher:", error);
+  }
+};
+
+const stopWebLocationWatcher = async () => {
+  if (webLocationSubscription) {
+    webLocationSubscription.remove();
+    webLocationSubscription = null;
   }
 };
 
 // Registreer de achtergrondjob eenmalig zodat Expo hem kan aanroepen.
-// Dit gebeurt bij het importeren van het bestand; daarna kan het OS ons wakker maken zodra er locatie-updates zijn.
-if (!TaskManager.isTaskDefined(GEOFENCE_TASK_NAME)) {
+// Dit gebeurt alleen op native platforms; web gebruikt een aparte watcher.
+if (isNative && !TaskManager.isTaskDefined(GEOFENCE_TASK_NAME)) {
   TaskManager.defineTask(
     GEOFENCE_TASK_NAME,
     async ({ data, error }: TaskManager.TaskManagerTaskBody) => {
@@ -78,7 +298,7 @@ if (!TaskManager.isTaskDefined(GEOFENCE_TASK_NAME)) {
       // Neem het meest recente location sample uit de payload; oudere samples zijn minder relevant voor geofences.
       const location = (data as { locations?: Location.LocationObject[] })
         ?.locations?.[0];
-      if (!location || Platform.OS === "web") return;
+      if (!location) return;
 
       // Haal de huidige gebruiker op zodat we de juiste targets gebruiken; anonieme gebruikers slaan niets op.
       const userId = await AsyncStorage.getItem("current_user_id");
@@ -139,11 +359,9 @@ if (!TaskManager.isTaskDefined(GEOFENCE_TASK_NAME)) {
 }
 
 const ensureLocationUpdates = async () => {
-  if (Platform.OS === "web") return;
-  try {
-    await ensureGeoPermissions();
-  } catch (permissionError) {
-    console.log("Geofence permission error:", permissionError);
+  if (!isNative) return;
+  const granted = await ensureGeoPermissions();
+  if (!granted) {
     return;
   }
   // Start de dienst alleen als hij nog niet draait.
@@ -170,7 +388,7 @@ const ensureLocationUpdates = async () => {
 };
 
 const stopLocationUpdates = async () => {
-  if (Platform.OS === "web") return;
+  if (!isNative) return;
   // Stop alleen wanneer de dienst effectief actief is.
   const hasStarted =
     await Location.hasStartedLocationUpdatesAsync(GEOFENCE_TASK_NAME);
@@ -184,8 +402,51 @@ const stopLocationUpdates = async () => {
 };
 
 export const initializeGeofenceTask = async () => {
-  if (Platform.OS === "web") return;
-  // Aanroepen bij app start of login activeert de watcher zodat geofences meteen lopen.
+  if (isWeb) {
+    try {
+      const activeUser = await AsyncStorage.getItem("current_user_id");
+      if (!activeUser) {
+        await stopWebLocationWatcher();
+        webTargets = [];
+        webActiveUserId = null;
+        webNotified = new Set();
+        webNotifiedLoadedFor = null;
+        return;
+      }
+      webActiveUserId = activeUser;
+      let parsedTargets: GeofenceTarget[] = [];
+      const storedTargets = await AsyncStorage.getItem(targetKey(activeUser));
+      if (storedTargets) {
+        try {
+          const raw = JSON.parse(storedTargets);
+          if (Array.isArray(raw)) {
+            parsedTargets = raw.filter(
+              (entry) =>
+                entry &&
+                typeof entry.id === "string" &&
+                typeof entry.title === "string" &&
+                typeof entry.latitude === "number" &&
+                typeof entry.longitude === "number"
+            ) as GeofenceTarget[];
+          }
+        } catch (error) {
+          console.log("Failed to parse stored web targets:", error);
+        }
+      }
+      webTargets = parsedTargets;
+      webNotifiedLoadedFor = null;
+      await loadWebNotified(activeUser);
+      pruneWebNotified();
+      if (webTargets.length > 0) {
+        await startWebLocationWatcher();
+      } else {
+        await stopWebLocationWatcher();
+      }
+    } catch (error) {
+      console.log("Failed to initialize web geofence state:", error);
+    }
+    return;
+  }
   await ensureLocationUpdates();
 };
 
@@ -193,12 +454,36 @@ export const syncGeofenceTargets = async (
   userId: string,
   targets: GeofenceTarget[]
 ) => {
-  if (Platform.OS === "web") return;
-  // Sla de nieuwste lijst doelen lokaal op voor de achtergrondjob.
-  // De achtergrondtaak leest deze lijst binnen enkele seconden in en gebruikt hem bij de volgende location-update.
+  if (isWeb) {
+    try {
+      await AsyncStorage.setItem(targetKey(userId), JSON.stringify(targets));
+    } catch (error) {
+      console.log("Failed to persist web geofence targets:", error);
+    }
+    webActiveUserId = userId;
+    webNotifiedLoadedFor = null;
+    await loadWebNotified(userId);
+    webTargets = targets;
+    pruneWebNotified();
+    if (!targets.length) {
+      await stopWebLocationWatcher();
+      webNotified = new Set();
+      webNotifiedLoadedFor = userId;
+      try {
+        await AsyncStorage.removeItem(notifiedKey(userId));
+      } catch (error) {
+        console.log("Failed to clear web notified cache:", error);
+      }
+      return;
+    }
+    await startWebLocationWatcher();
+    return;
+  }
+
+  if (!isNative) return;
+
   await AsyncStorage.setItem(targetKey(userId), JSON.stringify(targets));
   if (targets.length === 0) {
-    // Geen doelen meer: wis caches en zet de service uit zodat de gebruiker geen onnodige accu verbruikt.
     await AsyncStorage.removeItem(notifiedKey(userId));
     await stopLocationUpdates();
   } else {
@@ -207,11 +492,26 @@ export const syncGeofenceTargets = async (
 };
 
 export const clearGeofenceTaskState = async (userId?: string) => {
-  if (Platform.OS === "web") return;
+  if (isWeb) {
+    const activeUser =
+      userId ?? (await AsyncStorage.getItem("current_user_id")) ?? undefined;
+    if (activeUser) {
+      await AsyncStorage.removeItem(targetKey(activeUser));
+      await AsyncStorage.removeItem(notifiedKey(activeUser));
+    }
+    await stopWebLocationWatcher();
+    webTargets = [];
+    webActiveUserId = null;
+    webNotified = new Set();
+    webNotifiedLoadedFor = null;
+    return;
+  }
+
+  if (!isNative) return;
+
   const activeUser =
     userId ?? (await AsyncStorage.getItem("current_user_id")) ?? undefined;
   if (activeUser) {
-    // Bij uitloggen opruimen zodat oude data geen meldingen meer triggert en privacy gewaarborgd blijft.
     await AsyncStorage.removeItem(targetKey(activeUser));
     await AsyncStorage.removeItem(notifiedKey(activeUser));
   }

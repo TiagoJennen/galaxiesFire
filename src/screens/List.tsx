@@ -12,11 +12,12 @@ import {
   Alert,
   Platform,
   InteractionManager,
+  Modal,
+  TextInput,
 } from "react-native";
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
-import { Ionicons } from "@expo/vector-icons";
 import { FIREBASE_AUTH } from "../services/FirebaseConfig";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -24,7 +25,7 @@ import { translations } from "../constants/translations";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import { useNavigation, CommonActions } from "@react-navigation/native";
-import MapLibreGL, { Logger } from "@maplibre/maplibre-react-native";
+import { MapLibreGL, Logger, isMapLibreAvailable } from "../utils/maplibre";
 import { Region } from "react-native-maps";
 import * as Location from "expo-location";
 import {
@@ -64,6 +65,12 @@ const NEW_SUBTASK_LOCATION_INDEX = -1;
 
 const makeLocationKey = (location: LatLng) =>
   `${location.latitude.toFixed(6)}:${location.longitude.toFixed(6)}`;
+
+const COORDINATE_DESCRIPTION_REGEX =
+  /^-?\d{1,3}(?:\.\d+)?,\s*-?\d{1,3}(?:\.\d+)?$/;
+
+const isCoordinateDescription = (value?: string | null) =>
+  typeof value === "string" && COORDINATE_DESCRIPTION_REGEX.test(value.trim());
 
 // Hoofdfunctie van het scherm: toont takenlijst, formulieren en archive
 const List: React.FC<ListScreenProps> = ({
@@ -149,6 +156,15 @@ const List: React.FC<ListScreenProps> = ({
     useState(false);
   const [subtaskEditorSource, setSubtaskEditorSource] =
     useState<ListSource>("active");
+  const [webPickerState, setWebPickerState] = useState<{
+    mode: "date" | "time";
+    title: string;
+    placeholder: string;
+    confirmLabel: string;
+    onConfirm: (value: Date) => void;
+  } | null>(null);
+  const [webPickerText, setWebPickerText] = useState("");
+  const [webPickerError, setWebPickerError] = useState<string | null>(null);
   const [editingTodoSource, setEditingTodoSource] =
     useState<ListSource>("active");
   const [selectedLocationDescription, setSelectedLocationDescription] =
@@ -231,6 +247,59 @@ const List: React.FC<ListScreenProps> = ({
         return null;
       }
       if (Platform.OS === "web") {
+        try {
+          const url = new URL("https://nominatim.openstreetmap.org/reverse");
+          url.searchParams.set("format", "jsonv2");
+          url.searchParams.set("lat", location.latitude.toString());
+          url.searchParams.set("lon", location.longitude.toString());
+          url.searchParams.set("zoom", "18");
+          url.searchParams.set("addressdetails", "1");
+
+          const response = await fetch(url.toString(), {
+            headers: {
+              "Accept-Language": language === "nl" ? "nl-NL" : "en-US",
+              "User-Agent":
+                "galaxiesFire/1.0 (+https://github.com/TiagoJennen)",
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const payload = (await response.json()) as {
+            display_name?: string;
+            address?: Record<string, string>;
+          };
+          const address = payload.address ?? {};
+          const streetSegment = [address.road, address.house_number]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+          const citySegment =
+            address.city ??
+            address.town ??
+            address.village ??
+            address.municipality ??
+            address.county ??
+            address.suburb ??
+            null;
+          const countrySegment = address.country ?? null;
+          const parts = [
+            streetSegment.length ? streetSegment : null,
+            citySegment,
+            countrySegment,
+          ]
+            .filter((part) => part && part.toString().trim().length > 0)
+            .map((part) => part!.toString().trim());
+
+          if (parts.length) {
+            return parts.join(", ");
+          }
+          if (payload.display_name && payload.display_name.trim().length) {
+            return payload.display_name.trim();
+          }
+        } catch (error) {
+          console.log("Reverse geocode (web) failed:", error);
+        }
         return `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
       }
       try {
@@ -244,7 +313,7 @@ const List: React.FC<ListScreenProps> = ({
         return null;
       }
     },
-    [composeAddressString]
+    [composeAddressString, language]
   );
 
   const getLocationDisplay = useCallback(
@@ -430,24 +499,21 @@ const List: React.FC<ListScreenProps> = ({
           setTodos(remote.todos);
           setArchivedTodos(remote.archive);
 
-          if (Platform.OS !== "web") {
-            await measureAsync("geofence-initialization", async () => {
-              try {
-                await initializeGeofenceTask();
-                if (locationPermissionGranted) {
-                  await syncGeofenceTargets(
-                    uid,
-                    geofenceTargetsFromTodos(remote.todos)
-                  );
-                }
-              } catch (geoError) {
-                console.log(
-                  "Failed to initialize geofence tracking:",
-                  geoError
+          await measureAsync("geofence-initialization", async () => {
+            try {
+              await initializeGeofenceTask();
+              const canSyncGeofences =
+                locationPermissionGranted || Platform.OS === "web";
+              if (canSyncGeofences) {
+                await syncGeofenceTargets(
+                  uid,
+                  geofenceTargetsFromTodos(remote.todos)
                 );
               }
-            });
-          }
+            } catch (geoError) {
+              console.log("Failed to initialize geofence tracking:", geoError);
+            }
+          });
         } catch (remoteError) {
           if (!cancelled) {
             console.log("Failed to load todos from Firebase:", remoteError);
@@ -476,8 +542,10 @@ const List: React.FC<ListScreenProps> = ({
   useEffect(() => {
     if (Platform.OS === "web") return;
     try {
-      MapLibreGL.setAccessToken?.("");
-      MapLibreGL.setTelemetryEnabled?.(false);
+      if (MapLibreGL) {
+        MapLibreGL.setAccessToken?.("");
+        MapLibreGL.setTelemetryEnabled?.(false);
+      }
     } catch (error) {
       console.log("MapLibre init error:", error);
     }
@@ -507,9 +575,13 @@ const List: React.FC<ListScreenProps> = ({
       return false;
     };
 
-    Logger.setLogCallback(suppressMapLibreNoise);
+    if (Logger && isMapLibreAvailable) {
+      Logger.setLogCallback(suppressMapLibreNoise);
+    }
     return () => {
-      Logger.setLogCallback(() => false);
+      if (Logger && isMapLibreAvailable) {
+        Logger.setLogCallback(() => false);
+      }
     };
   }, []);
 
@@ -540,7 +612,9 @@ const List: React.FC<ListScreenProps> = ({
           console.log("Fout bij opslaan archief lokaal (local):", e)
         );
       }
-      if (Platform.OS !== "web" && userId && locationPermissionGranted) {
+      const canSyncGeofences =
+        userId && (locationPermissionGranted || Platform.OS === "web");
+      if (canSyncGeofences) {
         syncGeofenceTargets(userId, geofenceTargetsFromTodos(newTodos)).catch(
           (err) => console.log("Geofence sync failed:", err)
         );
@@ -558,7 +632,11 @@ const List: React.FC<ListScreenProps> = ({
     }> = [];
 
     const registerTodo = (source: ListSource, index: number, entry: Todo) => {
-      if (entry.location && !entry.locationDescription) {
+      if (
+        entry.location &&
+        (!entry.locationDescription ||
+          isCoordinateDescription(entry.locationDescription))
+      ) {
         const location = entry.location;
         const id = `${source}-todo-${index}-${makeLocationKey(location)}`;
         candidates.push({
@@ -593,7 +671,11 @@ const List: React.FC<ListScreenProps> = ({
         });
       }
       entry.subtasks.forEach((sub, subIndex) => {
-        if (sub.location && !sub.locationDescription) {
+        if (
+          sub.location &&
+          (!sub.locationDescription ||
+            isCoordinateDescription(sub.locationDescription))
+        ) {
           const location = sub.location;
           const id = `${source}-sub-${index}-${subIndex}-${makeLocationKey(location)}`;
           candidates.push({
@@ -840,14 +922,9 @@ const List: React.FC<ListScreenProps> = ({
 
   const openTaskEditorDate = () => {
     if (Platform.OS === "web") {
-      const input = window.prompt(
-        language === "nl"
-          ? "Voer datum in (YYYY-MM-DD of DD-MM-YYYY):"
-          : "Enter a date (YYYY-MM-DD or DD-MM-YYYY):",
-        taskEditorDate ? taskEditorDate.toISOString().slice(0, 10) : ""
+      openWebPicker("date", taskEditorDate, (value) =>
+        setTaskEditorDate(value)
       );
-      const parsed = parseDateInput(input);
-      if (parsed) setTaskEditorDate(parsed);
       return;
     }
     setShowTaskEditorDatePicker(true);
@@ -855,18 +932,9 @@ const List: React.FC<ListScreenProps> = ({
 
   const openTaskEditorTime = () => {
     if (Platform.OS === "web") {
-      const input = window.prompt(
-        language === "nl"
-          ? "Voer tijd in (HH:MM, 24u):"
-          : "Enter a time (HH:MM, 24h):",
-        taskEditorTime
-          ? `${String(taskEditorTime.getHours()).padStart(2, "0")}:${String(
-              taskEditorTime.getMinutes()
-            ).padStart(2, "0")}`
-          : ""
+      openWebPicker("time", taskEditorTime, (value) =>
+        setTaskEditorTime(value)
       );
-      const parsed = parseTimeInput(input);
-      if (parsed) setTaskEditorTime(parsed);
       return;
     }
     setShowTaskEditorTimePicker(true);
@@ -1042,14 +1110,9 @@ const List: React.FC<ListScreenProps> = ({
 
   const openSubtaskEditorDate = () => {
     if (Platform.OS === "web") {
-      const input = window.prompt(
-        language === "nl"
-          ? "Voer datum in (YYYY-MM-DD of DD-MM-YYYY):"
-          : "Enter a date (YYYY-MM-DD or DD-MM-YYYY):",
-        subtaskEditorDate ? subtaskEditorDate.toISOString().slice(0, 10) : ""
+      openWebPicker("date", subtaskEditorDate, (value) =>
+        setSubtaskEditorDate(value)
       );
-      const parsed = parseDateInput(input);
-      if (parsed) setSubtaskEditorDate(parsed);
       return;
     }
     setShowSubtaskEditorDatePicker(true);
@@ -1057,18 +1120,9 @@ const List: React.FC<ListScreenProps> = ({
 
   const openSubtaskEditorTime = () => {
     if (Platform.OS === "web") {
-      const input = window.prompt(
-        language === "nl"
-          ? "Voer tijd in (HH:MM, 24u):"
-          : "Enter a time (HH:MM, 24h):",
-        subtaskEditorTime
-          ? `${String(subtaskEditorTime.getHours()).padStart(2, "0")}:${String(
-              subtaskEditorTime.getMinutes()
-            ).padStart(2, "0")}`
-          : ""
+      openWebPicker("time", subtaskEditorTime, (value) =>
+        setSubtaskEditorTime(value)
       );
-      const parsed = parseTimeInput(input);
-      if (parsed) setSubtaskEditorTime(parsed);
       return;
     }
     setShowSubtaskEditorTimePicker(true);
@@ -1418,7 +1472,7 @@ const List: React.FC<ListScreenProps> = ({
     await signOut(FIREBASE_AUTH);
   }, [archivedTodos, todos, userId]);
 
-  // Parsers voor web prompt inputs (ondersteunt meerdere formaten)
+  // Parsers voor web date/time invoer (ondersteunt meerdere formaten)
   const parseDateInput = (input: string | null) => {
     if (!input) return null;
     const isoMatch = input.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -1441,16 +1495,87 @@ const List: React.FC<ListScreenProps> = ({
     d.setHours(parseInt(tMatch[1], 10), parseInt(tMatch[2], 10), 0, 0);
     return d;
   };
+  const formatDateInput = (value: Date | null) =>
+    value ? value.toISOString().slice(0, 10) : "";
 
-  // Open date/time pickers: web gebruikt prompts, native DateTimePicker
+  const formatTimeInput = (value: Date | null) =>
+    value
+      ? `${String(value.getHours()).padStart(2, "0")}:${String(
+          value.getMinutes()
+        ).padStart(2, "0")}`
+      : "";
+
+  const resetWebPicker = () => {
+    setWebPickerState(null);
+    setWebPickerText("");
+    setWebPickerError(null);
+  };
+
+  const openWebPicker = (
+    mode: "date" | "time",
+    initialValue: Date | null,
+    onConfirm: (value: Date) => void
+  ) => {
+    if (Platform.OS !== "web") return;
+    const isDate = mode === "date";
+    const title = isDate
+      ? language === "nl"
+        ? "Kies een datum"
+        : "Select a date"
+      : language === "nl"
+        ? "Kies een tijd"
+        : "Select a time";
+    const placeholder = isDate
+      ? language === "nl"
+        ? "JJJJ-MM-DD of DD-MM-JJJJ"
+        : "YYYY-MM-DD or DD-MM-YYYY"
+      : language === "nl"
+        ? "HH:MM (24u)"
+        : "HH:MM (24h)";
+    setWebPickerState({
+      mode,
+      title,
+      placeholder,
+      confirmLabel: language === "nl" ? "Opslaan" : "Save",
+      onConfirm,
+    });
+    setWebPickerText(
+      mode === "date"
+        ? formatDateInput(initialValue)
+        : formatTimeInput(initialValue)
+    );
+    setWebPickerError(null);
+  };
+
+  const handleWebPickerConfirm = () => {
+    if (!webPickerState) return;
+    const parser =
+      webPickerState.mode === "date" ? parseDateInput : parseTimeInput;
+    const parsed = parser(webPickerText.trim());
+    if (!parsed) {
+      setWebPickerError(
+        webPickerState.mode === "date"
+          ? language === "nl"
+            ? "Voer een geldige datum in."
+            : "Enter a valid date."
+          : language === "nl"
+            ? "Voer een geldige tijd in."
+            : "Enter a valid time."
+      );
+      return;
+    }
+    webPickerState.onConfirm(parsed);
+    resetWebPicker();
+  };
+
+  const handleWebPickerCancel = () => {
+    resetWebPicker();
+  };
+
+  // Open date/time pickers: web gebruikt modal, native DateTimePicker
   const openTaskDate = () => {
     if (Platform.OS === "web") {
-      const input = window.prompt(
-        "Voer datum in (YYYY-MM-DD of DD-MM-YYYY):",
-        selectedDate ? selectedDate.toISOString().slice(0, 10) : ""
-      );
-      const parsed = parseDateInput(input);
-      if (parsed) setSelectedDate(parsed);
+      openWebPicker("date", selectedDate, (value) => setSelectedDate(value));
       return;
     }
     setShowDatePicker(true);
@@ -1458,16 +1583,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const openTaskTime = () => {
     if (Platform.OS === "web") {
-      const input = window.prompt(
-        "Voer tijd in (HH:MM, 24u):",
-        selectedTime
-          ? `${String(selectedTime.getHours()).padStart(2, "0")}:${String(
-              selectedTime.getMinutes()
-            ).padStart(2, "0")}`
-          : ""
-      );
-      const parsed = parseTimeInput(input);
-      if (parsed) setSelectedTime(parsed);
+      openWebPicker("time", selectedTime, (value) => setSelectedTime(value));
       return;
     }
     setShowTimePicker(true);
@@ -1475,12 +1591,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const openSubtaskDate = () => {
     if (Platform.OS === "web") {
-      const input = window.prompt(
-        "Voer datum subtask in (YYYY-MM-DD of DD-MM-YYYY):",
-        subtaskDate ? subtaskDate.toISOString().slice(0, 10) : ""
-      );
-      const parsed = parseDateInput(input);
-      if (parsed) setSubtaskDate(parsed);
+      openWebPicker("date", subtaskDate, (value) => setSubtaskDate(value));
       return;
     }
     setShowSubtaskDatePicker(true);
@@ -1488,16 +1599,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const openSubtaskTime = () => {
     if (Platform.OS === "web") {
-      const input = window.prompt(
-        "Voer tijd subtask in (HH:MM, 24u):",
-        subtaskTime
-          ? `${String(subtaskTime.getHours()).padStart(2, "0")}:${String(
-              subtaskTime.getMinutes()
-            ).padStart(2, "0")}`
-          : ""
-      );
-      const parsed = parseTimeInput(input);
-      if (parsed) setSubtaskTime(parsed);
+      openWebPicker("time", subtaskTime, (value) => setSubtaskTime(value));
       return;
     }
     setShowSubtaskTimePicker(true);
@@ -1509,15 +1611,6 @@ const List: React.FC<ListScreenProps> = ({
       source: ListSource = "active",
       subtaskIndex: number | null = null
     ) => {
-      if (Platform.OS === "web") {
-        showInputWarning(
-          language === "nl"
-            ? "Locatieselectie wordt op web momenteel niet ondersteund."
-            : "Location picking is not supported on web."
-        );
-        return;
-      }
-
       const editingIndex = typeof todoIndex === "number" ? todoIndex : null;
 
       const sourceList = source === "archive" ? archivedTodos : todos;
@@ -1807,17 +1900,47 @@ const List: React.FC<ListScreenProps> = ({
       );
       return;
     }
-    if (Platform.OS === "web") {
-      setLocationHelperMessage(
-        language === "nl"
-          ? "Adres zoeken wordt op web niet ondersteund."
-          : "Address search is not supported on web."
-      );
-      return;
-    }
+    setLocationHelperMessage(null);
+    setLocationLoading(true);
     try {
-      setLocationHelperMessage(null);
-      setLocationLoading(true);
+      if (Platform.OS === "web") {
+        const endpoint = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(
+          query
+        )}`;
+        const response = await fetch(endpoint, {
+          headers: {
+            "Accept-Language": language === "nl" ? "nl-NL" : "en-US",
+            "User-Agent": "galaxiesFire/1.0 (+https://github.com/TiagoJennen)",
+          },
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = (await response.json()) as Array<{
+          lat?: string;
+          lon?: string;
+        }>;
+        if (!payload.length) {
+          setLocationHelperMessage(strings.searchAddressNoResult);
+          return;
+        }
+        const first = payload[0];
+        const latitude = parseFloat(first.lat ?? "");
+        const longitude = parseFloat(first.lon ?? "");
+        if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+          throw new Error("Invalid coordinates from geocoder");
+        }
+        const resolved = { latitude, longitude };
+        setSelectedLocation(resolved);
+        setMapRegion({
+          latitude,
+          longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        });
+        return;
+      }
+
       const results = await Location.geocodeAsync(query);
       if (!results.length) {
         setLocationHelperMessage(strings.searchAddressNoResult);
@@ -1835,7 +1958,6 @@ const List: React.FC<ListScreenProps> = ({
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       });
-      setLocationHelperMessage(null);
     } catch (error) {
       console.log("Address geocode failed:", error);
       setLocationHelperMessage(strings.searchAddressError);
@@ -1845,14 +1967,6 @@ const List: React.FC<ListScreenProps> = ({
   };
   const openArchivedLocation = useCallback(
     (location: LatLng, description?: string | null) => {
-      if (Platform.OS === "web") {
-        showInputWarning(
-          language === "nl"
-            ? "Locatieselectie wordt op web momenteel niet ondersteund."
-            : "Location picking is not supported on web."
-        );
-        return;
-      }
       setEditingLocationTodoIndex(null);
       setEditingLocationSubtaskIndex(null);
       setSelectedLocation({ ...location });
@@ -1885,9 +1999,6 @@ const List: React.FC<ListScreenProps> = ({
   };
   const mapFocus = (selectedLocation ?? mapRegion ?? DEFAULT_REGION) as LatLng &
     Partial<Region>;
-  const activeMarker = (selectedLocation ?? mapRegion) as
-    | (LatLng & Partial<Region>)
-    | null;
   const cameraCenter: [number, number] = [
     mapFocus.longitude,
     mapFocus.latitude,
@@ -1910,18 +2021,17 @@ const List: React.FC<ListScreenProps> = ({
     }
   };
 
-  // Notification handler setup (Expo Notifications)
-  if (Platform.OS !== "web") {
-    // Registreer hoe lokale meldingen getoond worden op native platforms.
+  useEffect(() => {
+    if (Platform.OS === "web") return;
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowBanner: true, // vervangt shouldShowAlert
-        shouldShowList: true, // toont ook in notificatiecentrum
+        shouldShowBanner: true,
+        shouldShowList: true,
         shouldPlaySound: true,
         shouldSetBadge: false,
       }),
     });
-  }
+  }, []);
 
   // Flag die bijhoudt of de gebruiker meldingsrechten heeft gegeven.
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -1930,8 +2040,30 @@ const List: React.FC<ListScreenProps> = ({
 
   // Vraag bij het opstarten meteen om meldingsrechten (alleen native).
   useEffect(() => {
-    if (Platform.OS === "web") return;
-    // Vraag meldingsrechten éénmalig op nadat het scherm geladen is.
+    if (Platform.OS === "web") {
+      if (typeof window === "undefined" || !("Notification" in window)) {
+        setNotificationsEnabled(false);
+        return;
+      }
+      if (Notification.permission === "granted") {
+        setNotificationsEnabled(true);
+        return;
+      }
+      if (Notification.permission === "denied") {
+        setNotificationsEnabled(false);
+        return;
+      }
+      Notification.requestPermission()
+        .then((result) => {
+          setNotificationsEnabled(result === "granted");
+        })
+        .catch((err) => {
+          console.log("Browser notification permission error:", err);
+          setNotificationsEnabled(false);
+        });
+      return;
+    }
+
     const requestPermissions = async () => {
       try {
         let status = (await Notifications.getPermissionsAsync()).status;
@@ -1957,7 +2089,7 @@ const List: React.FC<ListScreenProps> = ({
       }
     };
     requestPermissions();
-  }, []);
+  }, [language]);
 
   // Houd deadlines in de gaten en plan meldingen zodra ze bijna verlopen.
   useEffect(() => {
@@ -2352,6 +2484,125 @@ const List: React.FC<ListScreenProps> = ({
   }
   return (
     <View style={{ flex: 1, padding: 20, backgroundColor: colors.background }}>
+      {Platform.OS === "web" && webPickerState && (
+        <Modal
+          transparent
+          animationType="fade"
+          visible
+          onRequestClose={handleWebPickerCancel}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.45)",
+              justifyContent: "center",
+              paddingHorizontal: 24,
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: colors.formBackground,
+                borderRadius: 12,
+                padding: 20,
+                alignSelf: "center",
+                width: "100%",
+                maxWidth: 400,
+                shadowColor: "#000",
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 6 },
+                elevation: 8,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: "700",
+                  color: colors.text,
+                }}
+              >
+                {webPickerState.title}
+              </Text>
+              <TextInput
+                value={webPickerText}
+                onChangeText={(value) => {
+                  if (webPickerError) setWebPickerError(null);
+                  setWebPickerText(value);
+                }}
+                placeholder={webPickerState.placeholder}
+                placeholderTextColor={colors.placeholder}
+                style={{
+                  marginTop: 16,
+                  borderWidth: 1,
+                  borderColor: "#ccc",
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  paddingHorizontal: 14,
+                  color: colors.text,
+                  backgroundColor: theme === "light" ? "#fff" : "#2b2b2b",
+                  fontSize: 16,
+                }}
+                autoFocus
+                autoComplete="off"
+                importantForAutofill="no"
+                keyboardType={
+                  webPickerState.mode === "date"
+                    ? "default"
+                    : "numbers-and-punctuation"
+                }
+                returnKeyType="done"
+                onSubmitEditing={handleWebPickerConfirm}
+              />
+              {webPickerError && (
+                <Text
+                  style={{
+                    marginTop: 10,
+                    color: colors.deleteButton,
+                    fontWeight: "600",
+                  }}
+                >
+                  {webPickerError}
+                </Text>
+              )}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "flex-end",
+                  marginTop: 24,
+                }}
+              >
+                <TouchableOpacity
+                  onPress={handleWebPickerCancel}
+                  style={{
+                    paddingVertical: 10,
+                    paddingHorizontal: 16,
+                    borderRadius: 8,
+                    backgroundColor: colors.toggleButton,
+                    marginRight: 12,
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>
+                    {strings.cancel}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleWebPickerConfirm}
+                  style={{
+                    paddingVertical: 10,
+                    paddingHorizontal: 18,
+                    borderRadius: 8,
+                    backgroundColor: colors.addButton,
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>
+                    {webPickerState.confirmLabel}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
       {/* Header met title, taal en thema toggles */}
       <ListHeaderControls
         colors={colors}
@@ -2480,7 +2731,7 @@ const List: React.FC<ListScreenProps> = ({
               value={selectedTime || new Date()}
               mode="time"
               display="default"
-              onChange={(event: DateTimePickerEvent, time?: Date) => {
+              onChange={(_event: DateTimePickerEvent, time?: Date) => {
                 setShowTimePicker(false);
                 if (time) setSelectedTime(time);
               }}
@@ -2492,7 +2743,7 @@ const List: React.FC<ListScreenProps> = ({
               value={selectedDate || new Date()}
               mode="date"
               display="default"
-              onChange={(event: DateTimePickerEvent, date?: Date) => {
+              onChange={(_event: DateTimePickerEvent, date?: Date) => {
                 setShowDatePicker(false);
                 if (date) setSelectedDate(date);
               }}
@@ -2504,7 +2755,7 @@ const List: React.FC<ListScreenProps> = ({
               value={subtaskDate || new Date()}
               mode="date"
               display="default"
-              onChange={(event: DateTimePickerEvent, date?: Date) => {
+              onChange={(_event: DateTimePickerEvent, date?: Date) => {
                 setShowSubtaskDatePicker(false);
                 if (date) setSubtaskDate(date);
               }}
@@ -2516,7 +2767,7 @@ const List: React.FC<ListScreenProps> = ({
               value={subtaskTime || new Date()}
               mode="time"
               display="default"
-              onChange={(event: DateTimePickerEvent, time?: Date) => {
+              onChange={(_event: DateTimePickerEvent, time?: Date) => {
                 setShowSubtaskTimePicker(false);
                 if (time) setSubtaskTime(time);
               }}
@@ -2583,7 +2834,7 @@ const List: React.FC<ListScreenProps> = ({
               value={selectedTime || new Date()}
               mode="time"
               display="default"
-              onChange={(event: DateTimePickerEvent, time?: Date) => {
+              onChange={(_event: DateTimePickerEvent, time?: Date) => {
                 setShowTimePicker(false);
                 if (time) setSelectedTime(time);
               }}
@@ -2595,7 +2846,7 @@ const List: React.FC<ListScreenProps> = ({
               value={selectedDate || new Date()}
               mode="date"
               display="default"
-              onChange={(event: DateTimePickerEvent, date?: Date) => {
+              onChange={(_event: DateTimePickerEvent, date?: Date) => {
                 setShowDatePicker(false);
                 if (date) setSelectedDate(date);
               }}
@@ -2607,7 +2858,7 @@ const List: React.FC<ListScreenProps> = ({
               value={subtaskDate || new Date()}
               mode="date"
               display="default"
-              onChange={(event: DateTimePickerEvent, date?: Date) => {
+              onChange={(_event: DateTimePickerEvent, date?: Date) => {
                 setShowSubtaskDatePicker(false);
                 if (date) setSubtaskDate(date);
               }}
@@ -2619,7 +2870,7 @@ const List: React.FC<ListScreenProps> = ({
               value={subtaskTime || new Date()}
               mode="time"
               display="default"
-              onChange={(event: DateTimePickerEvent, time?: Date) => {
+              onChange={(_event: DateTimePickerEvent, time?: Date) => {
                 setShowSubtaskTimePicker(false);
                 if (time) setSubtaskTime(time);
               }}

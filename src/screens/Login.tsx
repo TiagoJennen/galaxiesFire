@@ -138,6 +138,12 @@ const Login: React.FC<Props> = ({
       marginHorizontal: orientation === "portrait" ? 20 : 40,
       justifyContent: "center",
       backgroundColor: theme === "light" ? "#fff" : "#333",
+      alignSelf: Platform.OS === "web" ? "center" : "stretch",
+      width: Platform.OS === "web" ? "100%" : undefined,
+      maxWidth:
+        Platform.OS === "web"
+          ? Math.min(480, screenWidth - (orientation === "portrait" ? 40 : 80))
+          : undefined,
     },
     inputContainer: { marginBottom: 15 },
     label: {

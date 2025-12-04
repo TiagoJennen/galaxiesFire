@@ -1,5 +1,12 @@
+import { Platform } from "react-native";
 import { initializeApp } from "firebase/app";
-import { initializeAuth } from "firebase/auth";
+import type { Auth } from "firebase/auth";
+import {
+  initializeAuth,
+  getAuth,
+  setPersistence,
+  browserLocalPersistence,
+} from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getFirestore } from "firebase/firestore";
 
@@ -16,15 +23,24 @@ const firebaseConfig = {
 // Initialize app
 export const FIREBASE_APP = initializeApp(firebaseConfig);
 
-// Gebruik require om getReactNativePersistence veilig te importeren
-// Dit voorkomt TypeScript-importfouten
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { getReactNativePersistence } = require("firebase/auth");
+let FIREBASE_AUTH: Auth;
 
-// Initialize Auth met AsyncStorage (persistentie)
-export const FIREBASE_AUTH = initializeAuth(FIREBASE_APP, {
-  persistence: getReactNativePersistence(AsyncStorage),
-});
+if (Platform.OS === "web") {
+  const auth = getAuth(FIREBASE_APP);
+  setPersistence(auth, browserLocalPersistence).catch((error) => {
+    console.log("Failed to set web auth persistence:", error);
+  });
+  FIREBASE_AUTH = auth;
+} else {
+  // Gebruik require zodat bundlers voor web deze functie niet proberen te laden
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { getReactNativePersistence } = require("firebase/auth");
+  FIREBASE_AUTH = initializeAuth(FIREBASE_APP, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  });
+}
+
+export { FIREBASE_AUTH };
 
 // Initialize Firestore
 export const FIREBASE_DB = getFirestore(FIREBASE_APP);

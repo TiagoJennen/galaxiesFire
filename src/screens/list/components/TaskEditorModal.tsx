@@ -113,6 +113,9 @@ const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
             backgroundColor: colors.formBackground,
             borderRadius: 12,
             padding: 16,
+            width: "90%",
+            maxWidth: 560,
+            alignSelf: "center",
           }}
         >
           {/* Titel */}
