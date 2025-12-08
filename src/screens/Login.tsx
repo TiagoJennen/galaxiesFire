@@ -1,15 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
   ActivityIndicator,
-  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   Dimensions,
+  Animated,
+  Easing,
+  Pressable,
+  StatusBar,
 } from "react-native";
 import { FIREBASE_AUTH } from "../services/FirebaseConfig";
 import {
@@ -50,7 +53,7 @@ const Login: React.FC<Props> = ({
   const [screenHeight, setScreenHeight] = useState(
     Dimensions.get("window").height
   );
-  const [orientation, setOrientation] = useState(
+  const [orientation, setOrientation] = useState<"portrait" | "landscape">(
     screenWidth < screenHeight ? "portrait" : "landscape"
   );
 
@@ -93,172 +96,471 @@ const Login: React.FC<Props> = ({
     }
   };
 
-  // Dynamische styles die reageren op thema en oriëntatie
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme === "light" ? "#3A86FFFF" : "#222",
-    },
-    header: {
-      alignItems: "center",
-      justifyContent: "center",
-      marginTop: orientation === "portrait" ? 80 : 40,
-      marginBottom: orientation === "portrait" ? 40 : 20,
-    },
-    title: {
-      fontSize:
-        orientation === "portrait" ? screenWidth * 0.12 : screenWidth * 0.06,
-      fontWeight: "800",
-      color: "#fff",
-      textAlign: "center",
-    },
-    headerButtons: {
-      flexDirection: "row",
-      marginTop: 10,
-      justifyContent: "center",
-      gap: 10,
-    },
-    toggleButton: {
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      backgroundColor: "#6c757d",
-      borderRadius: 8,
-    },
-    languageButton: {
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      backgroundColor: "#6c757d",
-      borderRadius: 8,
-    },
-    formBox: {
-      flex: 1,
-      borderTopLeftRadius: 25,
-      borderTopRightRadius: 25,
-      padding: 20,
-      marginHorizontal: orientation === "portrait" ? 20 : 40,
-      justifyContent: "center",
-      backgroundColor: theme === "light" ? "#fff" : "#333",
-      alignSelf: Platform.OS === "web" ? "center" : "stretch",
-      width: Platform.OS === "web" ? "100%" : undefined,
-      maxWidth:
-        Platform.OS === "web"
-          ? Math.min(480, screenWidth - (orientation === "portrait" ? 40 : 80))
-          : undefined,
-    },
-    inputContainer: { marginBottom: 15 },
-    label: {
-      fontSize: 14,
-      fontWeight: "600",
-      marginBottom: 5,
-      color: theme === "light" ? "#333" : "#eee",
-    },
-    input: {
-      height: 50,
-      borderWidth: 1,
-      borderColor: theme === "light" ? "#ccc" : "#555",
-      borderRadius: 8,
-      paddingHorizontal: 10,
-      marginBottom: 15,
-      backgroundColor: theme === "light" ? "#fff" : "#444",
-      color: theme === "light" ? "#000" : "#fff",
-    },
-    button: {
-      paddingVertical: 15,
-      borderRadius: 12,
-      alignItems: "center",
-      marginTop: 10,
-      backgroundColor: "#3A86FFFF",
-    },
-    buttonText: { fontSize: 16, fontWeight: "600", color: "#fff" },
-  });
+  const accentColor = "#0A84FF";
+  const containerBackground = theme === "light" ? "#F4F6FB" : "#040608";
+  const subtitleText =
+    language === "nl"
+      ? "Welkom terug! Meld je aan."
+      : "Welcome back! Please sign in.";
+
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const slideUp = useRef(new Animated.Value(24)).current;
+
+  useEffect(() => {
+    // Subtiele fade-in voor header en kaart
+    Animated.parallel([
+      Animated.timing(fadeIn, {
+        toValue: 1,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideUp, {
+        toValue: 0,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeIn, slideUp]);
+
+  const styles = useMemo(
+    () =>
+      createStyles({
+        accentColor,
+        theme,
+        orientation,
+        screenWidth,
+        containerBackground,
+      }),
+    [accentColor, theme, orientation, screenWidth, containerBackground]
+  );
+
+  const placeholderColor = theme === "light" ? "#8C95A3" : "#7D8494";
+
+  const animatedIntro = {
+    opacity: fadeIn,
+    transform: [{ translateY: slideUp }],
+  };
 
   return (
     <View style={styles.container}>
-      {/* Header: titel en knoppen om taal/thema te wisselen */}
-      <View style={styles.header}>
-        <Text style={styles.title}>{translations[language].welcome}</Text>
-        <View style={styles.headerButtons}>
-          {/* Taal wisselknop - toont huidige taal (NL/EN) */}
-          <TouchableOpacity
-            style={styles.languageButton}
-            onPress={toggleLanguage}
-          >
-            <Text style={styles.buttonText}>{language.toUpperCase()}</Text>
-          </TouchableOpacity>
-          {/* Thema wisselknop - toont icoon voor dag/nacht */}
-          <TouchableOpacity style={styles.toggleButton} onPress={toggleTheme}>
-            <Text style={styles.buttonText}>
-              {theme === "light" ? "🌙" : "☀️"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* KeyboardAvoidingView voorkomt dat het toetsenbord velden bedekt op iOS */}
+      <StatusBar
+        barStyle={theme === "light" ? "dark-content" : "light-content"}
+        backgroundColor={containerBackground}
+      />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-          <View style={styles.formBox}>
-            {/* Formulier: email + wachtwoord */}
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>{translations[language].email}</Text>
-              <TextInput
-                value={email}
-                style={styles.input}
-                placeholder={translations[language].email}
-                placeholderTextColor={theme === "light" ? "#888" : "#aaa"}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                onChangeText={setEmail}
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Animated.View style={[styles.headerContainer, animatedIntro]}>
+            <View style={styles.logoBadge}>
+              <View style={styles.logoInner} />
+            </View>
+            <Text style={styles.headerTitle}>
+              {translations[language].login}
+            </Text>
+            <Text style={styles.headerSubtitle}>{subtitleText}</Text>
+            <View style={styles.headerControls}>
+              <HeaderToggleButton
+                label={language.toUpperCase()}
+                onPress={toggleLanguage}
+                styles={styles}
               />
-              <Text style={styles.label}>
-                {translations[language].password}
-              </Text>
-              <TextInput
-                value={password}
-                style={styles.input}
-                placeholder={translations[language].password}
-                placeholderTextColor={theme === "light" ? "#888" : "#aaa"}
-                autoCapitalize="none"
-                secureTextEntry
-                onChangeText={setPassword}
+              <HeaderToggleButton
+                label={theme === "light" ? "🌙" : "☀️"}
+                onPress={toggleTheme}
+                styles={styles}
               />
             </View>
+          </Animated.View>
 
-            {/* Toon laadindicator tijdens netwerkacties */}
+          <Animated.View style={[styles.formCard, animatedIntro]}>
+            <InputField
+              label={translations[language].email}
+              value={email}
+              placeholder={translations[language].email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              styles={styles}
+              placeholderColor={placeholderColor}
+            />
+            <InputField
+              label={translations[language].password}
+              value={password}
+              placeholder={translations[language].password}
+              onChangeText={setPassword}
+              secureTextEntry
+              styles={styles}
+              placeholderColor={placeholderColor}
+            />
+
             {loading ? (
-              <ActivityIndicator
-                size="large"
-                color="#3A86FFFF"
-                style={{ marginTop: 20 }}
-              />
+              <View style={styles.loadingWrapper}>
+                <ActivityIndicator size="small" color={accentColor} />
+              </View>
             ) : (
               <>
-                {/* Login knop */}
-                <TouchableOpacity style={styles.button} onPress={signIn}>
-                  <Text style={styles.buttonText}>
-                    {translations[language].login}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Registratie knop */}
-                <TouchableOpacity
-                  style={[styles.button, { marginTop: 10 }]}
+                <AccentButton
+                  label={translations[language].login}
+                  onPress={signIn}
+                  variant="primary"
+                  styles={styles}
+                />
+                <AccentButton
+                  label={translations[language].signup}
                   onPress={signUp}
-                >
-                  <Text style={styles.buttonText}>
-                    {translations[language].signup}
-                  </Text>
-                </TouchableOpacity>
+                  variant="secondary"
+                  styles={styles}
+                />
               </>
             )}
-          </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
+};
+
+const createStyles = ({
+  accentColor,
+  theme,
+  orientation,
+  screenWidth,
+  containerBackground,
+}: {
+  accentColor: string;
+  theme: "light" | "dark";
+  orientation: "portrait" | "landscape";
+  screenWidth: number;
+  containerBackground: string;
+}) => {
+  const isPortrait = orientation === "portrait";
+  const baseCardWidth = isPortrait ? screenWidth - 40 : screenWidth * 0.55;
+  const maxWidth = Math.min(baseCardWidth, 480);
+
+  const cardLight = "rgba(255,255,255,0.92)";
+  const cardDark = "rgba(18,22,28,0.9)";
+
+  const titleFont = Platform.select({
+    ios: "SFProDisplay-Bold",
+    android: "sans-serif-medium",
+    default: "System",
+  });
+
+  const textFont = Platform.select({
+    ios: "SFProText-Regular",
+    android: "sans-serif",
+    default: "System",
+  });
+
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: containerBackground,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: isPortrait ? 20 : 48,
+      paddingVertical: isPortrait ? 32 : 24,
+    },
+    headerContainer: {
+      width: "100%",
+      maxWidth,
+      alignItems: "center",
+      marginBottom: 24,
+    },
+    logoBadge: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: theme === "light" ? "#FFFFFF" : "#12161C",
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 20,
+      shadowColor: "#000",
+      shadowOpacity: theme === "light" ? 0.12 : 0.35,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 10,
+    },
+    logoInner: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: accentColor,
+      opacity: 0.85,
+    },
+    headerTitle: {
+      fontSize: 34,
+      fontWeight: "700",
+      fontFamily: titleFont,
+      color: theme === "light" ? "#0B0D11" : "#F1F3F5",
+      textAlign: "center",
+      letterSpacing: 0.3,
+    },
+    headerSubtitle: {
+      marginTop: 8,
+      fontSize: 16,
+      fontFamily: textFont,
+      color: theme === "light" ? "#5B6573" : "#9AA3B4",
+      textAlign: "center",
+      lineHeight: 22,
+    },
+    headerControls: {
+      flexDirection: "row",
+      marginTop: 20,
+      justifyContent: "center",
+    },
+    toggleControl: {
+      minWidth: 48,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 18,
+      backgroundColor: theme === "light" ? "#FFFFFF" : "#1A1F27",
+      borderWidth: theme === "light" ? 1 : 0,
+      borderColor: "rgba(10,10,10,0.05)",
+      alignItems: "center",
+      justifyContent: "center",
+      marginHorizontal: 6,
+      shadowColor: "#000000",
+      shadowOpacity: theme === "light" ? 0.08 : 0.26,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 5,
+    },
+    toggleControlPressed: {
+      transform: [{ scale: 0.97 }],
+      opacity: 0.85,
+    },
+    toggleLabel: {
+      fontSize: 14,
+      fontWeight: "600",
+      fontFamily: textFont,
+      color: theme === "light" ? "#1E1F24" : "#E5E9F0",
+    },
+    formCard: {
+      width: "100%",
+      maxWidth,
+      borderRadius: 28,
+      paddingHorizontal: isPortrait ? 28 : 32,
+      paddingVertical: isPortrait ? 32 : 30,
+      backgroundColor: theme === "light" ? cardLight : cardDark,
+      shadowColor: "#000",
+      shadowOpacity: theme === "light" ? 0.12 : 0.3,
+      shadowRadius: 40,
+      shadowOffset: { width: 0, height: 25 },
+      elevation: theme === "light" ? 12 : 18,
+    },
+    inputBlock: {
+      marginBottom: 20,
+    },
+    inputLabel: {
+      fontSize: 14,
+      fontWeight: "600",
+      fontFamily: textFont,
+      color: theme === "light" ? "#1E1F24" : "#D6DBE4",
+      marginBottom: 8,
+      letterSpacing: 0.2,
+    },
+    inputControl: {
+      height: 56,
+      borderRadius: 18,
+      paddingHorizontal: 18,
+      backgroundColor: theme === "light" ? "#F5F7FB" : "#131821",
+      borderWidth: theme === "light" ? 0 : 1,
+      borderColor: "rgba(255,255,255,0.04)",
+      color: theme === "light" ? "#0B0D11" : "#FFFFFF",
+      fontSize: 16,
+      fontFamily: textFont,
+      shadowColor: theme === "light" ? "#C7D1E6" : "#000",
+      shadowOpacity: theme === "light" ? 0.35 : 0.4,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: theme === "light" ? 6 : 0,
+    },
+    loadingWrapper: {
+      height: 56,
+      borderRadius: 18,
+      backgroundColor: theme === "light" ? "#E9EDF6" : "#0F141C",
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 4,
+      marginBottom: 12,
+    },
+    buttonWrapper: {
+      marginTop: 12,
+      borderRadius: 18,
+      overflow: "hidden",
+    },
+    buttonWrapperPressed: {
+      opacity: 0.92,
+    },
+    buttonBase: {
+      height: 58,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 18,
+    },
+    buttonPrimary: {
+      backgroundColor: accentColor,
+    },
+    buttonSecondary: {
+      backgroundColor: theme === "light" ? "#FFFFFF" : "transparent",
+      borderWidth: 1,
+      borderColor: theme === "light" ? "rgba(10,132,255,0.25)" : accentColor,
+    },
+    buttonTextPrimary: {
+      fontSize: 17,
+      fontWeight: "600",
+      fontFamily: textFont,
+      color: "#FFFFFF",
+      letterSpacing: 0.4,
+    },
+    buttonTextSecondary: {
+      fontSize: 17,
+      fontWeight: "600",
+      fontFamily: textFont,
+      color: accentColor,
+      letterSpacing: 0.4,
+    },
+  });
+};
+
+type LoginStyles = ReturnType<typeof createStyles>;
+
+type HeaderToggleButtonProps = {
+  label: string;
+  onPress: () => void;
+  styles: LoginStyles;
+};
+
+function HeaderToggleButton({
+  label,
+  onPress,
+  styles,
+}: HeaderToggleButtonProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.toggleControl,
+        pressed && styles.toggleControlPressed,
+      ]}
+    >
+      <Text style={styles.toggleLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
+type InputFieldProps = {
+  label: string;
+  value: string;
+  placeholder: string;
+  onChangeText: (text: string) => void;
+  keyboardType?: "default" | "email-address";
+  secureTextEntry?: boolean;
+  styles: LoginStyles;
+  placeholderColor: string;
+};
+
+function InputField({
+  label,
+  value,
+  placeholder,
+  onChangeText,
+  keyboardType = "default",
+  secureTextEntry,
+  styles,
+  placeholderColor,
+}: InputFieldProps) {
+  return (
+    <View style={styles.inputBlock}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <TextInput
+        value={value}
+        style={styles.inputControl}
+        placeholder={placeholder}
+        placeholderTextColor={placeholderColor}
+        autoCapitalize="none"
+        keyboardType={keyboardType}
+        secureTextEntry={secureTextEntry}
+        onChangeText={onChangeText}
+      />
+    </View>
+  );
+}
+
+type AccentButtonProps = {
+  label: string;
+  onPress: () => void;
+  variant?: "primary" | "secondary";
+  styles: LoginStyles;
+};
+
+function AccentButton({
+  label,
+  onPress,
+  variant = "primary",
+  styles,
+}: AccentButtonProps) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.97,
+      useNativeDriver: true,
+      speed: 15,
+      bounciness: 8,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 15,
+      bounciness: 8,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={({ pressed }) => [
+        styles.buttonWrapper,
+        pressed && styles.buttonWrapperPressed,
+      ]}
+    >
+      <Animated.View
+        style={[
+          styles.buttonBase,
+          variant === "primary" ? styles.buttonPrimary : styles.buttonSecondary,
+          { transform: [{ scale }] },
+        ]}
+      >
+        <Text
+          style={
+            variant === "primary"
+              ? styles.buttonTextPrimary
+              : styles.buttonTextSecondary
+          }
+        >
+          {label}
+        </Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+type ForgotPasswordLinkProps = {
+  styles: LoginStyles;
+  language: "nl" | "en";
 };
 
 export default Login;
