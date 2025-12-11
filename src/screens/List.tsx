@@ -14,6 +14,9 @@ import {
   InteractionManager,
   Modal,
   TextInput,
+  Pressable,
+  ToastAndroid,
+  StyleSheet,
 } from "react-native";
 import DateTimePicker, {
   DateTimePickerEvent,
@@ -40,7 +43,7 @@ import {
   Todo,
   SubTodo,
 } from "./list/types";
-import { buildThemeColors } from "./list/theme";
+import { buildThemeColors, ThemeColors } from "./list/theme";
 import {
   DEFAULT_REGION,
   MAPLIBRE_STYLE_URL,
@@ -54,10 +57,12 @@ import LocationModal from "./list/components/LocationModal";
 import SubtaskEditorModal from "./list/components/SubtaskEditorModal";
 import TaskEditorModal from "./list/components/TaskEditorModal";
 import ListHeaderControls from "./list/components/ListHeaderControls";
-import TaskCreator from "./list/components/TaskCreator";
+import TaskCreatorModal from "./list/components/TaskCreatorModal";
+import SubtaskCreatorModal from "./list/components/SubtaskCreatorModal";
 import ActiveTodoList from "./list/components/ActiveTodoList";
 import ArchivedTodoList from "./list/components/ArchivedTodoList";
 import { measureAsync } from "../utils/performance";
+import { Ionicons } from "@expo/vector-icons";
 
 // Onthoud de laatst gekozen lijstweergave zodat toggles (zoals thema) het niet resetten.
 let lastShowArchive = false;
@@ -92,8 +97,12 @@ const List: React.FC<ListScreenProps> = ({
   const [subtaskTime, setSubtaskTime] = useState<Date | null>(null);
   const [showSubtaskDatePicker, setShowSubtaskDatePicker] = useState(false);
   const [showSubtaskTimePicker, setShowSubtaskTimePicker] = useState(false);
-  const [editingTodoIndex, setEditingTodoIndex] = useState<number | null>(null);
   const [showArchive, setShowArchive] = useState(() => lastShowArchive);
+  const [shouldFocusTaskInput, setShouldFocusTaskInput] = useState(false);
+  const [taskCreatorVisible, setTaskCreatorVisible] = useState(false);
+  const [taskCreatorTarget, setTaskCreatorTarget] = useState<ListSource>(
+    lastShowArchive ? "archive" : "active"
+  );
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">(
@@ -109,6 +118,11 @@ const List: React.FC<ListScreenProps> = ({
   const [prioritySort, setPrioritySort] = useState<"highToLow" | "lowToHigh">(
     "highToLow"
   );
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  });
   const [selectedLocation, setSelectedLocation] = useState<LatLng | null>(null);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
@@ -156,6 +170,12 @@ const List: React.FC<ListScreenProps> = ({
     useState(false);
   const [subtaskEditorSource, setSubtaskEditorSource] =
     useState<ListSource>("active");
+  const [subtaskCreatorVisible, setSubtaskCreatorVisible] = useState(false);
+  const [subtaskCreatorParentIndex, setSubtaskCreatorParentIndex] = useState<
+    number | null
+  >(null);
+  const [subtaskCreatorSource, setSubtaskCreatorSource] =
+    useState<ListSource>("active");
   const [webPickerState, setWebPickerState] = useState<{
     mode: "date" | "time";
     title: string;
@@ -165,8 +185,6 @@ const List: React.FC<ListScreenProps> = ({
   } | null>(null);
   const [webPickerText, setWebPickerText] = useState("");
   const [webPickerError, setWebPickerError] = useState<string | null>(null);
-  const [editingTodoSource, setEditingTodoSource] =
-    useState<ListSource>("active");
   const [selectedLocationDescription, setSelectedLocationDescription] =
     useState<string | null>(null);
   const [newSubtaskLocationDescription, setNewSubtaskLocationDescription] =
@@ -175,9 +193,79 @@ const List: React.FC<ListScreenProps> = ({
   const inflightLocationKeysRef = useRef<Set<string>>(new Set());
   const todosRef = useRef<Todo[]>([]);
   const archivedTodosRef = useRef<Todo[]>([]);
+  const taskInputRef = useRef<TextInput | null>(null);
+
+  const closeTaskCreatorModal = useCallback(() => {
+    setTaskCreatorVisible(false);
+    setShouldFocusTaskInput(false);
+  }, []);
+
+  const resetSubtaskDraft = useCallback(() => {
+    setSubtaskText("");
+    setSubtaskDate(null);
+    setSubtaskTime(null);
+    setNewSubtaskPriority("medium");
+    setNewSubtaskLocation(null);
+    setNewSubtaskLocationDescription(null);
+  }, []);
+
+  const closeSubtaskCreator = useCallback(() => {
+    setSubtaskCreatorVisible(false);
+    setSubtaskCreatorParentIndex(null);
+    setSubtaskCreatorSource("active");
+    resetSubtaskDraft();
+  }, [resetSubtaskDraft]);
 
   const colors = useMemo(() => buildThemeColors(theme), [theme]);
+  const floatingAddStyles = useMemo(
+    () => createFloatingAddButtonStyles(colors, theme),
+    [colors, theme]
+  );
   const strings = useMemo(() => translations[language], [language]);
+  const locale = useMemo(
+    () => (language === "nl" ? "nl-NL" : "en-US"),
+    [language]
+  );
+  const isViewingToday = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return selectedDay.getTime() === today.getTime();
+  }, [selectedDay]);
+  const selectedDayLabel = useMemo(() => {
+    try {
+      return new Intl.DateTimeFormat(locale, {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      }).format(selectedDay);
+    } catch (error) {
+      return selectedDay.toDateString();
+    }
+  }, [locale, selectedDay]);
+
+  const addTaskButtonLabel =
+    language === "nl" ? "Nieuwe hoofdtaak" : "New main task";
+  const addTaskButtonHint =
+    language === "nl"
+      ? "Open het formulier om een hoofdtaak te maken."
+      : "Open the form to create a main task.";
+
+  const shiftSelectedDay = useCallback((delta: number) => {
+    setSelectedDay((current) => {
+      const next = new Date(current);
+      next.setDate(next.getDate() + delta);
+      next.setHours(0, 0, 0, 0);
+      return next;
+    });
+  }, []);
+
+  const goToPreviousDay = useCallback(() => {
+    shiftSelectedDay(-1);
+  }, [shiftSelectedDay]);
+
+  const goToNextDay = useCallback(() => {
+    shiftSelectedDay(1);
+  }, [shiftSelectedDay]);
 
   useEffect(() => {
     todosRef.current = todos;
@@ -186,6 +274,34 @@ const List: React.FC<ListScreenProps> = ({
   useEffect(() => {
     archivedTodosRef.current = archivedTodos;
   }, [archivedTodos]);
+
+  useEffect(() => {
+    lastShowArchive = showArchive;
+  }, [showArchive]);
+
+  useEffect(() => {
+    setTaskCreatorTarget(showArchive ? "archive" : "active");
+    closeTaskCreatorModal();
+    closeSubtaskCreator();
+  }, [closeSubtaskCreator, closeTaskCreatorModal, showArchive]);
+
+  useEffect(() => {
+    if (!shouldFocusTaskInput || !taskCreatorVisible) {
+      return;
+    }
+
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      const input = taskInputRef.current;
+      if (input) {
+        input.focus();
+      } else {
+        setTimeout(() => taskInputRef.current?.focus(), 50);
+      }
+      setShouldFocusTaskInput(false);
+    });
+
+    return () => interaction.cancel();
+  }, [shouldFocusTaskInput, taskCreatorVisible]);
 
   const toggleSortOrder = () =>
     setSortOrder((current) => (current === "oldest" ? "newest" : "oldest"));
@@ -199,16 +315,6 @@ const List: React.FC<ListScreenProps> = ({
     if (priority === "medium") return 1;
     return 0;
   };
-
-  const priorityColor = useCallback(
-    (priority?: "low" | "medium" | "high" | null) => {
-      if (priority === "high") return "#ff6b6b";
-      if (priority === "medium") return "#ffb366";
-      if (priority === "low") return "#6bc66b";
-      return "#6c757d";
-    },
-    []
-  );
 
   const composeAddressString = useCallback(
     (result: Location.LocationGeocodedAddress | undefined) => {
@@ -332,10 +438,26 @@ const List: React.FC<ListScreenProps> = ({
     [strings]
   );
 
+  const shouldIncludeTodo = useCallback(
+    (todo: Todo) => {
+      if (!todo.deadline) {
+        return isViewingToday;
+      }
+      const deadlineDate = new Date(todo.deadline);
+      if (Number.isNaN(deadlineDate.getTime())) {
+        return isViewingToday;
+      }
+      deadlineDate.setHours(0, 0, 0, 0);
+      return deadlineDate.getTime() === selectedDay.getTime();
+    },
+    [isViewingToday, selectedDay]
+  );
+
   const buildDisplayList = useCallback(
     (list: Todo[]) =>
       list
         .map((item, originalIndex) => ({ item, originalIndex }))
+        .filter(({ item }) => shouldIncludeTodo(item))
         .sort((a, b) => {
           const priorityDiff =
             prioritySort === "highToLow"
@@ -353,7 +475,7 @@ const List: React.FC<ListScreenProps> = ({
             : 0;
           return sortOrder === "newest" ? bTime - aTime : aTime - bTime;
         }),
-    [prioritySort, sortOrder]
+    [prioritySort, shouldIncludeTodo, sortOrder]
   );
 
   const buildSubtaskDisplay = useCallback(
@@ -382,12 +504,12 @@ const List: React.FC<ListScreenProps> = ({
 
   const activeDisplayTodos = useMemo(
     () => buildDisplayList(todos),
-    [todos, prioritySort, sortOrder]
+    [buildDisplayList, todos]
   );
 
   const archivedDisplayTodos = useMemo(
     () => buildDisplayList(archivedTodos),
-    [archivedTodos, prioritySort, sortOrder]
+    [archivedTodos, buildDisplayList]
   );
 
   const geofenceTargetsFromTodos = useCallback(
@@ -409,7 +531,7 @@ const List: React.FC<ListScreenProps> = ({
     (value?: string | null) => {
       if (!value) return "";
       const date = new Date(value);
-      return date.toLocaleString(language === "nl" ? "nl-NL" : "en-US", {
+      return date.toLocaleString(locale, {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
@@ -418,7 +540,7 @@ const List: React.FC<ListScreenProps> = ({
         hour12: false,
       });
     },
-    [language]
+    [locale]
   );
 
   useEffect(() => {
@@ -791,6 +913,70 @@ const List: React.FC<ListScreenProps> = ({
     [language]
   );
 
+  const showTaskFeedback = useCallback(
+    (kind: "added" | "updated" | "deleted", target: ListSource) => {
+      const isArchiveTarget = target === "archive";
+
+      let title: string;
+      let message: string;
+
+      if (language === "nl") {
+        if (kind === "added") {
+          title = "Taak toegevoegd";
+          message = isArchiveTarget
+            ? "De taak staat nu in je archief."
+            : "De taak staat nu in je takenlijst.";
+        } else if (kind === "updated") {
+          title = "Taak bijgewerkt";
+          message = isArchiveTarget
+            ? "De taak is bijgewerkt in je archief."
+            : "De taak is bijgewerkt in je takenlijst.";
+        } else {
+          title = "Taak verwijderd";
+          message = isArchiveTarget
+            ? "De taak is verwijderd uit je archief."
+            : "De taak is verwijderd uit je takenlijst.";
+        }
+      } else {
+        if (kind === "added") {
+          title = "Task added";
+          message = isArchiveTarget
+            ? "The task is now in your archive."
+            : "The task is now in your task list.";
+        } else if (kind === "updated") {
+          title = "Task updated";
+          message = isArchiveTarget
+            ? "The task was updated in your archive."
+            : "The task was updated in your task list.";
+        } else {
+          title = "Task deleted";
+          message = isArchiveTarget
+            ? "The task was removed from your archive."
+            : "The task was removed from your task list.";
+        }
+      }
+
+      if (kind === "deleted" && Platform.OS !== "android") {
+        // Het bevestigingsdialoog gaf al feedback; voorkom dubbele meldingen.
+        return;
+      }
+
+      if (Platform.OS === "android") {
+        ToastAndroid.show(message, ToastAndroid.SHORT);
+        return;
+      }
+
+      if (Platform.OS === "web") {
+        window.alert(`${title}: ${message}`);
+        return;
+      }
+
+      const okLabel = "OK";
+      Alert.alert(title, message, [{ text: okLabel }]);
+    },
+    [language]
+  );
+
   // Combineer datum + tijd naar ISO string (gebruik 00:00 als geen tijd)
   const combineDateAndTime = useCallback(
     (date: Date | null, time: Date | null) => {
@@ -805,6 +991,12 @@ const List: React.FC<ListScreenProps> = ({
     },
     []
   );
+
+  const handleHeaderAddTask = useCallback(() => {
+    setTaskCreatorTarget(showArchive ? "archive" : "active");
+    setTaskCreatorVisible(true);
+    setShouldFocusTaskInput(true);
+  }, [showArchive]);
 
   // Voeg een nieuwe taak toe met optionele deadline/tijd
   const addTodo = useCallback(
@@ -832,12 +1024,14 @@ const List: React.FC<ListScreenProps> = ({
       } else {
         saveAll([...todos, newTodo], archivedTodos);
       }
+      showTaskFeedback("added", target);
       setTask("");
       setSelectedDate(null);
       setSelectedTime(null);
       setSelectedLocation(null);
       setSelectedLocationDescription(null);
       setMapRegion(null);
+      closeTaskCreatorModal();
     },
     [
       archivedTodos,
@@ -849,11 +1043,17 @@ const List: React.FC<ListScreenProps> = ({
       selectedLocationDescription,
       selectedTime,
       showInputWarning,
+      showTaskFeedback,
       strings,
       task,
       todos,
+      closeTaskCreatorModal,
     ]
   );
+
+  const handleTaskCreatorAdd = useCallback(() => {
+    addTodo(taskCreatorTarget);
+  }, [addTodo, taskCreatorTarget]);
 
   const openTodoEditor = useCallback(
     (index: number, source: ListSource = "active") => {
@@ -917,6 +1117,7 @@ const List: React.FC<ListScreenProps> = ({
       deadline: combineDateAndTime(taskEditorDate, taskEditorTime),
     };
     saveAll(updatedTodos, updatedArchived);
+    showTaskFeedback("updated", isArchive ? "archive" : "active");
     closeTodoEditor();
   };
 
@@ -1230,48 +1431,50 @@ const List: React.FC<ListScreenProps> = ({
         );
         targetList[todoIndex] = { ...parent, subtasks: filteredSubtasks };
         saveAll(updatedTodos, updatedArchived);
+        showTaskFeedback("deleted", source);
       });
     },
-    [archivedTodos, confirmDelete, saveAll, strings, todos]
+    [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos]
   );
 
   const beginInlineSubtaskCreation = useCallback(
     (todoIndex: number, source: ListSource) => {
-      setEditingTodoIndex(todoIndex);
-      setEditingTodoSource(source);
-      setSubtaskText("");
-      setSubtaskDate(null);
-      setSubtaskTime(null);
-      setNewSubtaskPriority("medium");
-      setNewSubtaskLocation(null);
-      setNewSubtaskLocationDescription(null);
+      resetSubtaskDraft();
+      setSubtaskCreatorParentIndex(todoIndex);
+      setSubtaskCreatorSource(source);
+      setSubtaskCreatorVisible(true);
     },
-    []
+    [resetSubtaskDraft]
   );
 
   // Verwijder taak (met confirm)
   const removeTodo = useCallback(
     (index: number) => {
-      confirmDelete(strings.confirmDelete, strings.deleteTask, () =>
+      confirmDelete(strings.confirmDelete, strings.deleteTask, () => {
         saveAll(
           todos.filter((_, i) => i !== index),
           archivedTodos
-        )
-      );
+        );
+        showTaskFeedback("deleted", "active");
+      });
     },
-    [archivedTodos, confirmDelete, saveAll, strings, todos]
+    [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos]
   );
 
   // Archiveer taak: verplaats van todos naar archivedTodos
   const archiveTodo = useCallback(
     (index: number) => {
       const todoToArchive = todos[index];
+      if (!todoToArchive) {
+        return;
+      }
       saveAll(
         todos.filter((_, i) => i !== index),
         [...archivedTodos, todoToArchive]
       );
+      showTaskFeedback("updated", "archive");
     },
-    [archivedTodos, saveAll, todos]
+    [archivedTodos, saveAll, showTaskFeedback, todos]
   );
 
   const unarchiveTodo = useCallback(
@@ -1284,20 +1487,22 @@ const List: React.FC<ListScreenProps> = ({
         [...todos, todoToUnarchive],
         archivedTodos.filter((_, i) => i !== index)
       );
+      showTaskFeedback("updated", "active");
     },
-    [archivedTodos, saveAll, todos]
+    [archivedTodos, saveAll, showTaskFeedback, todos]
   );
 
   const removeArchivedTodo = useCallback(
     (index: number) => {
-      confirmDelete(strings.confirmDelete, strings.deleteTask, () =>
+      confirmDelete(strings.confirmDelete, strings.deleteTask, () => {
         saveAll(
           todos,
           archivedTodos.filter((_, i) => i !== index)
-        )
-      );
+        );
+        showTaskFeedback("deleted", "archive");
+      });
     },
-    [archivedTodos, confirmDelete, saveAll, strings, todos]
+    [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos]
   );
 
   // Voeg subtask toe aan bestaande taak (met optionele deadline/tijd)
@@ -1340,13 +1545,8 @@ const List: React.FC<ListScreenProps> = ({
         subtasks: updatedSubtasks,
       };
       saveAll(updatedTodos, updatedArchived);
-      setSubtaskText("");
-      setSubtaskDate(null);
-      setSubtaskTime(null);
-      setNewSubtaskPriority("medium");
-      setNewSubtaskLocation(null);
-      setNewSubtaskLocationDescription(null);
-      setEditingTodoIndex(null);
+      showTaskFeedback("added", source);
+      closeSubtaskCreator();
     },
     [
       archivedTodos,
@@ -1356,8 +1556,10 @@ const List: React.FC<ListScreenProps> = ({
       newSubtaskLocation,
       newSubtaskLocationDescription,
       newSubtaskPriority,
+      closeSubtaskCreator,
       saveAll,
       showInputWarning,
+      showTaskFeedback,
       subtaskDate,
       subtaskText,
       subtaskTime,
@@ -1784,12 +1986,31 @@ const List: React.FC<ListScreenProps> = ({
     ]
   );
 
-  const openInlineSubtaskLocation = useCallback(
-    (todoIndex: number, source: ListSource) => {
-      openLocationPicker(todoIndex, source, NEW_SUBTASK_LOCATION_INDEX);
-    },
-    [openLocationPicker]
-  );
+  const handleTaskCreatorOpenLocation = useCallback(() => {
+    if (taskCreatorTarget === "archive") {
+      openLocationPicker(undefined, "archive");
+    } else {
+      openLocationPicker();
+    }
+  }, [openLocationPicker, taskCreatorTarget]);
+
+  const handleSubtaskCreatorOpenLocation = useCallback(() => {
+    if (subtaskCreatorParentIndex === null) {
+      return;
+    }
+    openLocationPicker(
+      subtaskCreatorParentIndex,
+      subtaskCreatorSource,
+      NEW_SUBTASK_LOCATION_INDEX
+    );
+  }, [openLocationPicker, subtaskCreatorParentIndex, subtaskCreatorSource]);
+
+  const handleSubtaskCreatorAdd = useCallback(() => {
+    if (subtaskCreatorParentIndex === null) {
+      return;
+    }
+    addSubtask(subtaskCreatorParentIndex, subtaskCreatorSource);
+  }, [addSubtask, subtaskCreatorParentIndex, subtaskCreatorSource]);
 
   const confirmLocationSelection = async () => {
     setLocationModalVisible(false);
@@ -2340,6 +2561,29 @@ const List: React.FC<ListScreenProps> = ({
   const subtaskEditorDeadlineDisplay = subtaskEditorDeadlinePreview
     ? formatDate(subtaskEditorDeadlinePreview)
     : "";
+  const taskCreatorDeadlinePreview =
+    selectedDate || selectedTime
+      ? combineDateAndTime(selectedDate, selectedTime)
+      : null;
+  const taskCreatorDeadlineDisplay = taskCreatorDeadlinePreview
+    ? formatDate(taskCreatorDeadlinePreview)
+    : "";
+  const subtaskCreatorDeadlinePreview =
+    subtaskDate || subtaskTime
+      ? combineDateAndTime(subtaskDate, subtaskTime)
+      : null;
+  const subtaskCreatorDeadlineDisplay = subtaskCreatorDeadlinePreview
+    ? formatDate(subtaskCreatorDeadlinePreview)
+    : "";
+  const taskCreatorLocationDisplay = selectedLocation
+    ? getLocationDisplay(selectedLocation, selectedLocationDescription ?? null)
+    : "";
+  const subtaskCreatorLocationDisplay = newSubtaskLocation
+    ? getLocationDisplay(
+        newSubtaskLocation,
+        newSubtaskLocationDescription ?? null
+      )
+    : "";
   const editingTodoLocationDescription = editingTodo?.location
     ? getLocationDisplay(
         editingTodo.location,
@@ -2483,7 +2727,15 @@ const List: React.FC<ListScreenProps> = ({
     return null;
   }
   return (
-    <View style={{ flex: 1, padding: 20, backgroundColor: colors.background }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.background,
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 120,
+      }}
+    >
       {Platform.OS === "web" && webPickerState && (
         <Modal
           transparent
@@ -2611,7 +2863,6 @@ const List: React.FC<ListScreenProps> = ({
         theme={theme}
         sortOrder={sortOrder}
         prioritySort={prioritySort}
-        title={showArchive ? strings.archive : strings.tasks}
         tasksLabel={strings.tasks}
         archiveLabel={strings.archive}
         onToggleLanguage={toggleLanguage}
@@ -2619,6 +2870,13 @@ const List: React.FC<ListScreenProps> = ({
         onToggleSortOrder={toggleSortOrder}
         onTogglePrioritySort={togglePrioritySort}
         onSelectTab={(tab) => setShowArchive(tab === "archive")}
+        onAddTask={handleHeaderAddTask}
+        showAddButton={false}
+        onLogout={logout}
+        logoutLabel={strings.logout}
+        currentDateLabel={selectedDayLabel}
+        onGoToPreviousDay={goToPreviousDay}
+        onGoToNextDay={goToNextDay}
       />
 
       <LocationModal
@@ -2676,6 +2934,34 @@ const List: React.FC<ListScreenProps> = ({
         locationDescription={editingSubtaskLocationDescription}
         strings={subtaskModalStrings}
       />
+      <SubtaskCreatorModal
+        visible={subtaskCreatorVisible}
+        colors={colors}
+        theme={theme}
+        language={language}
+        subtaskText={subtaskText}
+        onChangeSubtask={setSubtaskText}
+        priority={newSubtaskPriority}
+        onSelectPriority={setNewSubtaskPriority}
+        onOpenDate={openSubtaskDate}
+        onOpenTime={openSubtaskTime}
+        onOpenLocation={handleSubtaskCreatorOpenLocation}
+        onAdd={handleSubtaskCreatorAdd}
+        onClose={closeSubtaskCreator}
+        placeholder={strings.newSubtask}
+        deadlinePreview={subtaskCreatorDeadlineDisplay}
+        locationPreview={subtaskCreatorLocationDisplay}
+        locationAccessibility={{
+          label:
+            language === "nl"
+              ? "Locatie voor subtaak instellen"
+              : "Set subtask location",
+          hint:
+            language === "nl"
+              ? "Open de kaart om een locatie voor deze subtaak te kiezen."
+              : "Open the map to choose a location for this subtask.",
+        }}
+      />
       <TaskEditorModal
         visible={taskEditorVisible}
         colors={colors}
@@ -2703,29 +2989,36 @@ const List: React.FC<ListScreenProps> = ({
         strings={taskModalStrings}
       />
 
+      <TaskCreatorModal
+        visible={taskCreatorVisible}
+        colors={colors}
+        theme={theme}
+        language={language}
+        taskText={task}
+        onChangeTask={setTask}
+        inputRef={taskInputRef}
+        priority={newPriority}
+        onSelectPriority={setNewPriority}
+        onOpenDate={openTaskDate}
+        onOpenTime={openTaskTime}
+        onOpenLocation={handleTaskCreatorOpenLocation}
+        onAdd={handleTaskCreatorAdd}
+        placeholder={strings.addTask}
+        deadlinePreview={taskCreatorDeadlineDisplay}
+        locationPreview={taskCreatorLocationDisplay}
+        locationAccessibility={{
+          label: language === "nl" ? "Locatie instellen" : "Set location",
+          hint:
+            language === "nl"
+              ? "Open de kaart om een locatie te kiezen."
+              : "Open the map to choose a location.",
+        }}
+        onClose={closeTaskCreatorModal}
+      />
+
       {/* Als we het hoofd taken scherm tonen */}
       {!showArchive ? (
         <>
-          {/* Formulier om taak toe te voegen + datum/tijd buttons */}
-          <TaskCreator
-            colors={colors}
-            taskText={task}
-            onChangeTask={setTask}
-            priority={newPriority}
-            onSelectPriority={setNewPriority}
-            onOpenDate={openTaskDate}
-            onOpenTime={openTaskTime}
-            onOpenLocation={() => openLocationPicker()}
-            onAdd={addTodo}
-            placeholder={strings.addTask}
-            locationAccessibility={{
-              label: language === "nl" ? "Locatie instellen" : "Set location",
-              hint:
-                language === "nl"
-                  ? "Open de kaart om een locatie te kiezen."
-                  : "Open the map to choose a location.",
-            }}
-          />
           {showTimePicker && Platform.OS !== "web" && (
             <DateTimePicker
               value={selectedTime || new Date()}
@@ -2777,13 +3070,13 @@ const List: React.FC<ListScreenProps> = ({
           {/* Lijst met actieve taken (gesorteerd op priority + createdAt) */}
           <ActiveTodoList
             colors={colors}
+            theme={theme}
             language={language}
             strings={strings}
             displayTodos={activeDisplayTodos}
             buildSubtaskDisplay={buildSubtaskDisplay}
             formatDate={formatDate}
             getLocationDisplay={getLocationDisplay}
-            priorityColor={priorityColor}
             toggleTodo={toggleTodo}
             openLocationPicker={openLocationPicker}
             pickImage={pickImage}
@@ -2792,43 +3085,12 @@ const List: React.FC<ListScreenProps> = ({
             removeTodo={removeTodo}
             toggleSubtask={toggleSubtask}
             openSubtaskEditor={openSubtaskEditor}
-            confirmDelete={confirmDelete}
             removeSubtask={removeSubtask}
-            addSubtask={addSubtask}
             beginInlineSubtaskCreation={beginInlineSubtaskCreation}
-            openInlineSubtaskLocation={openInlineSubtaskLocation}
-            editingTodoIndex={editingTodoIndex}
-            editingTodoSource={editingTodoSource}
-            subtaskText={subtaskText}
-            onChangeSubtaskText={setSubtaskText}
-            newSubtaskPriority={newSubtaskPriority}
-            onSelectSubtaskPriority={setNewSubtaskPriority}
-            openSubtaskDate={openSubtaskDate}
-            openSubtaskTime={openSubtaskTime}
           />
         </>
       ) : (
         <>
-          <TaskCreator
-            colors={colors}
-            taskText={task}
-            onChangeTask={setTask}
-            priority={newPriority}
-            onSelectPriority={setNewPriority}
-            onOpenDate={openTaskDate}
-            onOpenTime={openTaskTime}
-            onOpenLocation={() => openLocationPicker(undefined, "archive")}
-            onAdd={() => addTodo("archive")}
-            placeholder={strings.addTask}
-            locationAccessibility={{
-              label: language === "nl" ? "Locatie instellen" : "Set location",
-              hint:
-                language === "nl"
-                  ? "Open de kaart om een locatie te kiezen."
-                  : "Open the map to choose a location.",
-            }}
-          />
-
           {showTimePicker && Platform.OS !== "web" && (
             <DateTimePicker
               value={selectedTime || new Date()}
@@ -2879,13 +3141,13 @@ const List: React.FC<ListScreenProps> = ({
 
           <ArchivedTodoList
             colors={colors}
+            theme={theme}
             language={language}
             strings={strings}
             displayTodos={archivedDisplayTodos}
             buildSubtaskDisplay={buildSubtaskDisplay}
             formatDate={formatDate}
             getLocationDisplay={getLocationDisplay}
-            priorityColor={priorityColor}
             toggleTodo={toggleTodo}
             openLocationPicker={openLocationPicker}
             openArchivedLocation={openArchivedLocation}
@@ -2896,38 +3158,75 @@ const List: React.FC<ListScreenProps> = ({
             toggleSubtask={toggleSubtask}
             openSubtaskEditor={openSubtaskEditor}
             removeSubtask={removeSubtask}
-            addSubtask={addSubtask}
             beginInlineSubtaskCreation={beginInlineSubtaskCreation}
-            openInlineSubtaskLocation={openInlineSubtaskLocation}
-            editingTodoIndex={editingTodoIndex}
-            editingTodoSource={editingTodoSource}
-            subtaskText={subtaskText}
-            onChangeSubtaskText={setSubtaskText}
-            newSubtaskPriority={newSubtaskPriority}
-            onSelectSubtaskPriority={setNewSubtaskPriority}
-            openSubtaskDate={openSubtaskDate}
-            openSubtaskTime={openSubtaskTime}
           />
         </>
       )}
 
-      {/* Logout knop (bewaar eerst) */}
-      <TouchableOpacity
-        onPress={logout}
-        style={{
-          padding: 12,
-          backgroundColor: colors.logoutButton,
-          borderRadius: 12,
-          alignItems: "center",
-          marginTop: 10,
-        }}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={addTaskButtonLabel}
+        accessibilityHint={addTaskButtonHint}
+        onPress={handleHeaderAddTask}
+        hitSlop={6}
+        style={({ pressed }) => [
+          floatingAddStyles.fab,
+          pressed && floatingAddStyles.fabPressed,
+        ]}
       >
-        <Text style={{ color: "#fff", fontWeight: "600" }}>
-          {strings.logout}
-        </Text>
-      </TouchableOpacity>
+        <Ionicons
+          name="add"
+          size={22}
+          color="#FFFFFF"
+          style={floatingAddStyles.fabIcon}
+        />
+        <Text style={floatingAddStyles.fabLabel}>{addTaskButtonLabel}</Text>
+      </Pressable>
     </View>
   );
+};
+
+const createFloatingAddButtonStyles = (
+  colors: ThemeColors,
+  theme: "light" | "dark"
+) => {
+  const accent = colors.addButton;
+  const isLight = theme === "light";
+
+  return StyleSheet.create({
+    fab: {
+      position: "absolute",
+      bottom: 24,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      alignSelf: "center",
+      paddingVertical: 14,
+      paddingHorizontal: 24,
+      borderRadius: 26,
+      backgroundColor: accent,
+      shadowColor: accent,
+      shadowOpacity: isLight ? 0.25 : 0.4,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 12,
+      minWidth: 220,
+      maxWidth: 320,
+    },
+    fabPressed: {
+      opacity: 0.92,
+      transform: [{ scale: 0.98 }],
+    },
+    fabIcon: {
+      marginRight: 8,
+    },
+    fabLabel: {
+      color: "#FFFFFF",
+      fontSize: 15,
+      fontWeight: "700",
+      letterSpacing: 0.3,
+    },
+  });
 };
 
 export default List;

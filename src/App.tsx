@@ -50,6 +50,7 @@ function InsideLayout({
   return (
     <InsideStack.Navigator
       screenOptions={{
+        headerShown: false,
         headerStyle: { backgroundColor: theme === "light" ? "#fff" : "#000" },
         headerTintColor: theme === "light" ? "#000" : "#fff",
       }}
@@ -57,7 +58,7 @@ function InsideLayout({
         <InsideStack.Screen
           name="ToDoList"
           component={ToDoListScreen}
-          options={{ title: "To-Do List" }}
+          options={{}}
         />
       }
     />
