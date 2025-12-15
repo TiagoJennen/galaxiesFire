@@ -3,7 +3,7 @@ import { Todo } from "./types";
 
 const FIRESTORE_DB = getFirestore();
 
-// Zorgt dat alle optionele fields altijd een waarde hebben (null als ze ontbreken)
+// Normaliseer zodat Firestore geen undefined veldwaarden ziet en schema consistent blijft.
 const normalizeTodo = (todo: Todo): Todo => ({
   ...todo,
   deadline: todo.deadline || null,
@@ -23,7 +23,7 @@ const normalizeTodo = (todo: Todo): Todo => ({
   })),
 });
 
-// Slaat todos en archief op in Firestore onder de userId
+// Persist de huidige lijsten naar Firestore-document per gebruiker.
 export const saveTodosFirebase = async (
   userId: string,
   todosData: Todo[],
@@ -44,7 +44,7 @@ export const saveTodosFirebase = async (
   }
 };
 
-// Haalt todos en archief op uit Firestore
+// Lees Firestore-document en lever altijd lijsten terug, ook voor nieuwe gebruikers.
 export const loadTodosFirebase = async (userId: string) => {
   try {
     const userRef = doc(FIRESTORE_DB, "users", userId);

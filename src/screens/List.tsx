@@ -267,6 +267,10 @@ const List: React.FC<ListScreenProps> = ({
     shiftSelectedDay(1);
   }, [shiftSelectedDay]);
 
+  // Synchroniseer authenticatie, lokale cache en remote Firebase; initialiseert ook geofencing.
+  // Voorzie taken achteraf van geocodeerde beschrijvingen zolang er alleen coördinaten bekend zijn.
+  // Vraag meldingsrechten aan zodat deadlines pushmeldingen kunnen sturen.
+  // Plan herinneringen voor aankomende en verlopen deadlines; ontdubbelt via notifiedDeadlinesRef.
   useEffect(() => {
     todosRef.current = todos;
   }, [todos]);
@@ -347,6 +351,7 @@ const List: React.FC<ListScreenProps> = ({
     []
   );
 
+  // Haal een mensleesbare beschrijving op voor een LatLng; gebruikt web fallback wanneer native services ontbreken.
   const reverseGeocodeToDescription = useCallback(
     async (location: LatLng | null) => {
       if (!location) {
@@ -453,6 +458,7 @@ const List: React.FC<ListScreenProps> = ({
     [isViewingToday, selectedDay]
   );
 
+  // Sorteer en filter taken voor de lijstweergave op basis van geselecteerde dag en gekozen prioriteitsvolgorde.
   const buildDisplayList = useCallback(
     (list: Todo[]) =>
       list
@@ -512,6 +518,7 @@ const List: React.FC<ListScreenProps> = ({
     [archivedTodos, buildDisplayList]
   );
 
+  // Vertaal taken met locatie naar geofence-targets voor de achtergrondtaak.
   const geofenceTargetsFromTodos = useCallback(
     (list: Todo[]) =>
       list
@@ -707,6 +714,7 @@ const List: React.FC<ListScreenProps> = ({
     };
   }, []);
 
+  // Centrale opslagfunctie: werkt state bij, schrijft naar AsyncStorage/Firebase en houdt geofences in sync.
   const saveAll = useCallback(
     (newTodos: Todo[], newArchived: Todo[]) => {
       setTodos(newTodos);
@@ -1568,6 +1576,7 @@ const List: React.FC<ListScreenProps> = ({
   );
 
   // Afbeelding toevoegen (camera of galerij). Ondersteunt web en native.
+  // Afbeeldingskeuze werkt zowel voor camera als galerij en houdt editors in sync.
   const pickImage = useCallback(
     async (
       forSubtask = false,
@@ -1807,6 +1816,7 @@ const List: React.FC<ListScreenProps> = ({
     setShowSubtaskTimePicker(true);
   };
 
+  // Bereid de locatiemodal voor: seed met bestaande waarden en vraag permissies indien nodig.
   const openLocationPicker = useCallback(
     async (
       todoIndex?: number,

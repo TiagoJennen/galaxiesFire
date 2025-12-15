@@ -17,7 +17,7 @@ export type ThemeColors = {
   warningText: string;
 };
 
-// Genereert de juiste kleuren afhankelijk van het gekozen thema
+// Bouw een kleurenpalet per thema zodat UI-componenten consistent blijven.
 export const buildThemeColors = (mode: ThemeMode): ThemeColors => ({
   // Hoofdkleur van de achtergrond
   background: mode === "light" ? "#EFF3FA" : "#05090E",

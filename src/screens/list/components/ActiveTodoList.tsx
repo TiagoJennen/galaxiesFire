@@ -60,6 +60,7 @@ type ActiveTodoListProps = {
   beginInlineSubtaskCreation: (todoIndex: number, source: ListSource) => void;
 };
 
+// Lijstweergave voor actieve taken met subtaken, media-acties en snelle bewerkingen.
 const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
   colors,
   theme,
@@ -89,6 +90,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
     ? [styles.listContent, styles.listContentWeb]
     : styles.listContent;
 
+  // FlashList zorgt voor performant scrollen, ook wanneer elke kaart veel interacties bevat.
   return (
     <FlashList
       data={displayTodos}
@@ -99,6 +101,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
       renderItem={({ item: displayEntry }) => {
         const item = displayEntry.item;
         const originalIndex = displayEntry.originalIndex;
+        // Deadline-informatie wordt vooraf berekend zodat we waarschuwingen conditioneel kunnen tonen.
         const deadlineDate = item.deadline ? new Date(item.deadline) : null;
         const today = new Date();
         const isSameDay =
@@ -291,6 +294,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
               </Pressable>
             </View>
 
+            {/* Subtaken worden eerst genormaliseerd via buildSubtaskDisplay zodat filtering en sortering centraal blijft. */}
             {buildSubtaskDisplay(item.subtasks).map(
               ({ sub, originalIndex: subIndex }) => (
                 <View

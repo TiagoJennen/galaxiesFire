@@ -34,6 +34,7 @@ interface Props {
   toggleLanguage: () => void;
 }
 
+// Aanmeldscherm met taal- en thema-toggle, inclusief Firebase authenticatie calls.
 const Login: React.FC<Props> = ({
   // component props worden hier ontdaan
   theme,
@@ -138,6 +139,7 @@ const Login: React.FC<Props> = ({
 
   const placeholderColor = theme === "light" ? "#8C95A3" : "#7D8494";
 
+  // Intro animatie geeft subtiele beweging aan header en kaart.
   const animatedIntro = {
     opacity: fadeIn,
     transform: [{ translateY: slideUp }],
@@ -438,6 +440,7 @@ type HeaderToggleButtonProps = {
   styles: LoginStyles;
 };
 
+// Herbruikbare knop voor header toggles (taal/thema) met visuele feedback.
 function HeaderToggleButton({
   label,
   onPress,
@@ -467,6 +470,7 @@ type InputFieldProps = {
   placeholderColor: string;
 };
 
+// Invoercomponent die label en TextInput bundelt voor consistente styling.
 function InputField({
   label,
   value,
@@ -501,6 +505,7 @@ type AccentButtonProps = {
   styles: LoginStyles;
 };
 
+// Call-to-action knop met schaalanimatie voor primaire/secundaire acties.
 function AccentButton({
   label,
   onPress,
@@ -557,10 +562,5 @@ function AccentButton({
     </Pressable>
   );
 }
-
-type ForgotPasswordLinkProps = {
-  styles: LoginStyles;
-  language: "nl" | "en";
-};
 
 export default Login;

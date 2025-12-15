@@ -62,6 +62,7 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
   variant = "inline",
 }) => {
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
+  // Variant bepaalt of de component inline op de lijst staat of in een modal werkt.
   const wrapperStyle =
     variant === "modal"
       ? [styles.wrapperBase, styles.wrapperModal]

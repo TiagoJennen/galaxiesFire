@@ -63,6 +63,7 @@ export interface ArchivedTodoListProps {
   beginInlineSubtaskCreation: (todoIndex: number, source: ListSource) => void;
 }
 
+// Weergave voor gearchiveerde taken met dezelfde kaartstructuur als actief, maar andere acties.
 const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
   colors,
   theme,
@@ -94,6 +95,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
     ? [styles.listContent, styles.listContentWeb]
     : styles.listContent;
 
+  // FlashList maakt het mogelijk om grote archieven toch vloeiend te scrollen.
   return (
     <FlashList
       data={displayTodos}
@@ -104,6 +106,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
       renderItem={({ item: entry }) => {
         const item = entry.item;
         const originalIndex = entry.originalIndex;
+        // Gearchiveerde taken behouden hun deadline-informatie voor rapportage, daarom berekenen we hier opnieuw de status.
         const deadlineDate = item.deadline ? new Date(item.deadline) : null;
         const now = new Date();
         const deadlinePassed = deadlineDate ? deadlineDate < now : false;
@@ -293,6 +296,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
               </Pressable>
             </View>
 
+            {/* Subtaken gebruiken dezelfde helper als actief zodat we geen code dupliceren. */}
             {buildSubtaskDisplay(item.subtasks).map(
               ({ sub, originalIndex: subIndex }) => (
                 <View

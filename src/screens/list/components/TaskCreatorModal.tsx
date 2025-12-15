@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import TaskCreator, { TaskPriority } from "./TaskCreator";
+import SummaryBadge from "./SummaryBadge";
 import type { ThemeColors } from "../theme";
 import type { TextInput } from "react-native";
 
@@ -36,6 +37,7 @@ export type TaskCreatorModalProps = {
   onClose: () => void;
 };
 
+// Modal voor nieuwe hoofdtaak die dezelfde editor gebruikt als de inline variant.
 const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
   visible,
   colors,
@@ -76,6 +78,7 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
   const deadlineEmpty = deadlinePreview.trim().length === 0;
   const locationEmpty = locationPreview.trim().length === 0;
 
+  // Overzichtsbadges vatten gekozen deadline en locatie samen voordat de gebruiker bevestigt.
   return (
     <Modal
       transparent
@@ -171,51 +174,6 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
 };
 
 export default TaskCreatorModal;
-
-const SummaryBadge: React.FC<{
-  label: string;
-  value: string;
-  isPlaceholder: boolean;
-  colors: ThemeColors;
-  theme: "light" | "dark";
-}> = ({ label, value, isPlaceholder, colors, theme }) => {
-  const isLight = theme === "light";
-
-  return (
-    <View
-      style={{
-        flex: 1,
-        marginRight: 12,
-        padding: 12,
-        borderRadius: 16,
-        backgroundColor: isLight ? "#EEF3FF" : "#1A2233",
-        borderWidth: 1,
-        borderColor: isLight ? "#D8E2F5" : "#252F43",
-      }}
-    >
-      <Text
-        style={{
-          fontSize: 12,
-          fontWeight: "600",
-          color: colors.placeholder,
-          marginBottom: 4,
-        }}
-      >
-        {label}
-      </Text>
-      <Text
-        style={{
-          fontSize: 14,
-          fontWeight: "600",
-          color: isPlaceholder ? colors.placeholder : colors.text,
-        }}
-        numberOfLines={2}
-      >
-        {value}
-      </Text>
-    </View>
-  );
-};
 
 const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
   const isLight = theme === "light";

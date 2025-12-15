@@ -61,6 +61,7 @@ type SubtaskEditorModalProps = {
   strings: SubtaskStrings;
 };
 
+// Modalversie van de editor voor bestaande subtaken met dezelfde bouwstenen als hoofdtaak.
 const SubtaskEditorModal: React.FC<SubtaskEditorModalProps> = ({
   visible,
   colors,

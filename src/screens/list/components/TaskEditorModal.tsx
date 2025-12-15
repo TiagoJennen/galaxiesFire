@@ -60,6 +60,7 @@ type TaskEditorModalProps = {
   strings: TaskStrings;
 };
 
+// Volledige bewerkingsmodal voor een bestaande hoofdtaak inclusief deadline, media en locatie.
 const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
   visible,
   colors,

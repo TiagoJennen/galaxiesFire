@@ -7,6 +7,7 @@ type MaybeEvent = {
   features?: Array<{ geometry?: { coordinates?: unknown } }>;
 };
 
+// Houd zoomwaardes binnen realistische grenzen voor MapLibre en Maps.
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
@@ -22,12 +23,14 @@ export const MAPLIBRE_STYLE_URL =
 export const DEFAULT_CAMERA_ZOOM = 12;
 export const SELECTED_CAMERA_ZOOM = 14;
 
+// Schat een zoomniveau op basis van latitudeDelta zodat web en native gelijk trekken.
 export const regionToZoomLevel = (region?: Region | null) => {
   if (!region || !region.latitudeDelta) return null;
   const zoomApprox = Math.log2(360 / region.latitudeDelta);
   return clamp(zoomApprox, 3, 18);
 };
 
+// Uniformeer events van MapLibre/MapView naar een LatLng zodat click handlers generiek blijven.
 export const extractLonLatFromEvent = (event: MaybeEvent): LatLng | null => {
   const candidate =
     event?.geometry?.coordinates ??

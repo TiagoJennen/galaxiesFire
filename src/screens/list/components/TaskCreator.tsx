@@ -83,6 +83,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
     }).start();
   };
 
+  // Herbruikbare icon-knop zodat datum, tijd en locatie dezelfde styling delen.
   const ActionIconButton: React.FC<{
     icon: keyof typeof Ionicons.glyphMap;
     onPress: () => void;

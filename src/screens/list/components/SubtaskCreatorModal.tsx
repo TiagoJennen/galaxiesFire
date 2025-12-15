@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import InlineSubtaskEditor, { SubtaskPriority } from "./InlineSubtaskEditor";
+import SummaryBadge from "./SummaryBadge";
 import type { ThemeColors } from "../theme";
 
 export type SubtaskCreatorModalProps = {
@@ -34,6 +35,7 @@ export type SubtaskCreatorModalProps = {
   };
 };
 
+// Modal waarmee de gebruiker een subtaak met deadline, locatie en prioriteit kan voorbereiden.
 const SubtaskCreatorModal: React.FC<SubtaskCreatorModalProps> = ({
   visible,
   colors,
@@ -73,6 +75,7 @@ const SubtaskCreatorModal: React.FC<SubtaskCreatorModalProps> = ({
       ? "Voeg de nieuwe subtaak toe met de huidige instellingen."
       : "Add the new subtask with the current settings.";
 
+  // Deze modal leunt op de gedeelde InlineSubtaskEditor maar verplaatst bevestigen naar een aparte knop.
   return (
     <Modal
       transparent
@@ -171,51 +174,6 @@ const SubtaskCreatorModal: React.FC<SubtaskCreatorModalProps> = ({
 };
 
 export default SubtaskCreatorModal;
-
-const SummaryBadge: React.FC<{
-  label: string;
-  value: string;
-  isPlaceholder: boolean;
-  colors: ThemeColors;
-  theme: "light" | "dark";
-}> = ({ label, value, isPlaceholder, colors, theme }) => {
-  const isLight = theme === "light";
-
-  return (
-    <View
-      style={{
-        flex: 1,
-        marginRight: 12,
-        padding: 12,
-        borderRadius: 16,
-        backgroundColor: isLight ? "#EEF3FF" : "#1A2233",
-        borderWidth: 1,
-        borderColor: isLight ? "#D8E2F5" : "#252F43",
-      }}
-    >
-      <Text
-        style={{
-          fontSize: 12,
-          fontWeight: "600",
-          color: colors.placeholder,
-          marginBottom: 4,
-        }}
-      >
-        {label}
-      </Text>
-      <Text
-        style={{
-          fontSize: 14,
-          fontWeight: "600",
-          color: isPlaceholder ? colors.placeholder : colors.text,
-        }}
-        numberOfLines={2}
-      >
-        {value}
-      </Text>
-    </View>
-  );
-};
 
 const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
   const isLight = theme === "light";

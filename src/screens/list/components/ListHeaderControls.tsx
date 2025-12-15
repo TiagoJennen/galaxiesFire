@@ -28,6 +28,7 @@ type ListHeaderControlsProps = {
   onGoToNextDay: () => void;
 };
 
+// Hoofdscherm-header met taal-, thema-, sorteer- en navigatieknoppen.
 const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
   colors,
   showArchive,
@@ -86,6 +87,7 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
   const logoutButtonHint =
     language === "nl" ? "Log direct uit deze app." : "Sign out of the app.";
 
+  // Layout past zich aan wanneer er geen titel of ondertitel aanwezig is.
   const headingStyles = [
     styles.headingRow,
     !hasHeading && styles.headingRowNoTitle,
@@ -112,6 +114,7 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
     !hasHeading && styles.dateSwitcherCentered,
   ];
 
+  // Kleine hulpplek voor icon/label knoppen, voorkomt dubbele opmaak in web en native.
   const ControlButton: React.FC<{
     label?: string;
     icon?: string;

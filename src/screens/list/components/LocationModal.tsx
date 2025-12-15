@@ -196,6 +196,7 @@ type LocationModalProps = {
   onMarkerDragEnd: (event: any) => void;
 };
 
+// Modal die platformafhankelijk MapLibre of een web fallback toont om locaties te kiezen.
 const LocationModal: React.FC<LocationModalProps> = ({
   visible,
   colors,
