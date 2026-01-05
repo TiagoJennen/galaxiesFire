@@ -1,3 +1,4 @@
+// Inline formulier voor nieuwe hoofdtaak met prioriteit en shortcuts.
 import React, { useMemo, useRef } from "react";
 import {
   View,
@@ -65,6 +66,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   const addScale = useRef(new Animated.Value(1)).current;
 
+  // Zorgt voor een subtiele verkleining wanneer de gebruiker de plusknop indrukt.
   const handleAddPressIn = () => {
     Animated.spring(addScale, {
       toValue: 0.95,
@@ -74,6 +76,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
     }).start();
   };
 
+  // Reset de knop naar de originele schaal zodra het indrukken stopt.
   const handleAddPressOut = () => {
     Animated.spring(addScale, {
       toValue: 1,
@@ -167,6 +170,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
               pressed && styles.addButtonPressed,
             ]}
           >
+            {/* Animatie op de plus zodat het toevoegen tastbaar aanvoelt. */}
             <Animated.View style={{ transform: [{ scale: addScale }] }}>
               <Ionicons name="add" size={22} color="#FFFFFF" />
             </Animated.View>

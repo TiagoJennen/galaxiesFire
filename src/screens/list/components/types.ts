@@ -1,3 +1,4 @@
+// Hulptypen voor weergave-items die componenten in deze map gebruiken.
 import type { SubTodo, Todo } from "../types";
 
 export type DisplayTodo = {

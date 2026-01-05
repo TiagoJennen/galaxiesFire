@@ -1,3 +1,4 @@
+// Header met taal/thema toggles, sortering en tab-switch voor de lijst.
 import React, { useMemo } from "react";
 import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -491,7 +492,7 @@ const createStyles = ({
       marginRight: 0,
     },
     dateSwitcher: {
-      marginTop: isWeb ? 12 : 20,
+      marginTop: isWeb ? -14 : 20,
       flexDirection: "row",
       alignItems: "center",
       alignSelf: "stretch",
@@ -524,6 +525,7 @@ const createStyles = ({
       width: 44,
       alignItems: "center",
       justifyContent: "center",
+      marginTop: isWeb ? -8 : 0,
     },
     dateLabelContainer: {
       flex: 1,
@@ -532,6 +534,7 @@ const createStyles = ({
       justifyContent: "center",
       paddingHorizontal: 8,
       flexDirection: "row",
+      marginTop: isWeb ? -8 : 0,
     },
     dateLabel: {
       fontFamily: titleFont,

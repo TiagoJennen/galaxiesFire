@@ -1,3 +1,4 @@
+// Bewerkmodal voor subtaken inclusief deadlines, media en locatiebeheer.
 import React from "react";
 import {
   View,

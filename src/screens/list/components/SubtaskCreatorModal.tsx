@@ -1,3 +1,4 @@
+// Modal om subtaken aan een hoofdtaak toe te voegen met samenvatting.
 import React, { useMemo } from "react";
 import {
   Modal,

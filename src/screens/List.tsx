@@ -63,9 +63,21 @@ import ActiveTodoList from "./list/components/ActiveTodoList";
 import ArchivedTodoList from "./list/components/ArchivedTodoList";
 import { measureAsync } from "../utils/performance";
 import { Ionicons } from "@expo/vector-icons";
+import type { FlashListRef } from "@shopify/flash-list";
+import type { DisplayTodo } from "./list/components/types";
+import {
+  pushWebToast,
+  subscribeWebToast,
+  WebToastTone,
+} from "../utils/webToast";
 
 // Onthoud de laatst gekozen lijstweergave zodat toggles (zoals thema) het niet resetten.
 let lastShowArchive = false;
+let lastSelectedDayTimestamp = (() => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today.getTime();
+})();
 const NEW_SUBTASK_LOCATION_INDEX = -1;
 
 const makeLocationKey = (location: LatLng) =>
@@ -76,6 +88,16 @@ const COORDINATE_DESCRIPTION_REGEX =
 
 const isCoordinateDescription = (value?: string | null) =>
   typeof value === "string" && COORDINATE_DESCRIPTION_REGEX.test(value.trim());
+
+type WebToastEntry = {
+  id: string;
+  title: string;
+  message: string;
+  tone: WebToastTone;
+  expiresAt: number;
+};
+
+const MAX_WEB_TOASTS = 4;
 
 // Hoofdfunctie van het scherm: toont takenlijst, formulieren en archive
 const List: React.FC<ListScreenProps> = ({
@@ -119,11 +141,12 @@ const List: React.FC<ListScreenProps> = ({
     "highToLow"
   );
   const [selectedDay, setSelectedDay] = useState(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return today;
+    const initial = new Date(lastSelectedDayTimestamp);
+    initial.setHours(0, 0, 0, 0);
+    return initial;
   });
   const [selectedLocation, setSelectedLocation] = useState<LatLng | null>(null);
+  const [userLocation, setUserLocation] = useState<LatLng | null>(null);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
   const [locationPermissionGranted, setLocationPermissionGranted] =
@@ -176,6 +199,7 @@ const List: React.FC<ListScreenProps> = ({
   >(null);
   const [subtaskCreatorSource, setSubtaskCreatorSource] =
     useState<ListSource>("active");
+  // Beheer de inline web datum-/tijdkiezer zodat web dezelfde flow als native volgt.
   const [webPickerState, setWebPickerState] = useState<{
     mode: "date" | "time";
     title: string;
@@ -185,15 +209,32 @@ const List: React.FC<ListScreenProps> = ({
   } | null>(null);
   const [webPickerText, setWebPickerText] = useState("");
   const [webPickerError, setWebPickerError] = useState<string | null>(null);
+  // Browser-toasts worden lokaal bijgehouden zodat meerdere meldingen gestapeld kunnen worden.
+  const [webToasts, setWebToasts] = useState<WebToastEntry[]>([]);
   const [selectedLocationDescription, setSelectedLocationDescription] =
     useState<string | null>(null);
   const [newSubtaskLocationDescription, setNewSubtaskLocationDescription] =
     useState<string | null>(null);
+  const [webConfirmDialog, setWebConfirmDialog] = useState<null | {
+    title: string;
+    message: string;
+    confirmLabel: string;
+    cancelLabel: string;
+  }>(null);
+  // Houd bij welke locatiebeschrijvingen al verwerkt worden zodat we dubbele requests voorkomen.
   const processedLocationIdsRef = useRef<Set<string>>(new Set());
   const inflightLocationKeysRef = useRef<Set<string>>(new Set());
   const todosRef = useRef<Todo[]>([]);
   const archivedTodosRef = useRef<Todo[]>([]);
   const taskInputRef = useRef<TextInput | null>(null);
+  // FlashList refs geven het hoofdscherm controle over scroll-positie bij sorteringen.
+  const activeListRef = useRef<FlashListRef<DisplayTodo> | null>(null);
+  const archivedListRef = useRef<FlashListRef<DisplayTodo> | null>(null);
+  const webConfirmCallbackRef = useRef<(() => void) | null>(null);
+  // Koppel timers aan web toasts zodat ze automatisch verdwijnen.
+  const webToastTimersRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
 
   const closeTaskCreatorModal = useCallback(() => {
     setTaskCreatorVisible(false);
@@ -216,7 +257,54 @@ const List: React.FC<ListScreenProps> = ({
     resetSubtaskDraft();
   }, [resetSubtaskDraft]);
 
+  // Web krijgt een maatwerkconfirm zodat we geen standaard browser-pop-up hoeven te tonen.
+  const openWebConfirm = useCallback(
+    (
+      title: string,
+      message: string,
+      confirmLabel: string,
+      cancelLabel: string,
+      onConfirm: () => void
+    ) => {
+      webConfirmCallbackRef.current = onConfirm;
+      setWebConfirmDialog({ title, message, confirmLabel, cancelLabel });
+    },
+    []
+  );
+
+  // Sluit het confirmvenster en wis eventueel opgeslagen callbacks.
+  const handleWebConfirmCancel = useCallback(() => {
+    setWebConfirmDialog(null);
+    webConfirmCallbackRef.current = null;
+  }, []);
+
+  // Voer de bevestigde actie uit zodra de gebruiker "Verwijderen" kiest.
+  const handleWebConfirmConfirm = useCallback(() => {
+    const callback = webConfirmCallbackRef.current;
+    setWebConfirmDialog(null);
+    webConfirmCallbackRef.current = null;
+    callback?.();
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setWebToasts((current) => current.filter((toast) => toast.id !== id));
+    const timers = webToastTimersRef.current;
+    const timeoutId = timers[id];
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      delete timers[id];
+    }
+  }, []);
+
   const colors = useMemo(() => buildThemeColors(theme), [theme]);
+  const webToastStyles = useMemo(
+    () => createWebToastStyles(colors, theme),
+    [colors, theme]
+  );
+  const webConfirmStyles = useMemo(
+    () => createWebConfirmStyles(colors, theme),
+    [colors, theme]
+  );
   const floatingAddStyles = useMemo(
     () => createFloatingAddButtonStyles(colors, theme),
     [colors, theme]
@@ -280,6 +368,12 @@ const List: React.FC<ListScreenProps> = ({
   }, [archivedTodos]);
 
   useEffect(() => {
+    const next = new Date(selectedDay);
+    next.setHours(0, 0, 0, 0);
+    lastSelectedDayTimestamp = next.getTime();
+  }, [selectedDay]);
+
+  useEffect(() => {
     lastShowArchive = showArchive;
   }, [showArchive]);
 
@@ -307,12 +401,76 @@ const List: React.FC<ListScreenProps> = ({
     return () => interaction.cancel();
   }, [shouldFocusTaskInput, taskCreatorVisible]);
 
-  const toggleSortOrder = () =>
+  const toggleSortOrder = useCallback(() => {
     setSortOrder((current) => (current === "oldest" ? "newest" : "oldest"));
-  const togglePrioritySort = () =>
+  }, []);
+  const togglePrioritySort = useCallback(() => {
     setPrioritySort((current) =>
       current === "highToLow" ? "lowToHigh" : "highToLow"
     );
+  }, []);
+
+  // Scroll newest-first list to the top whenever the order toggles or view switches.
+  useEffect(() => {
+    // Reset scrollpositie zodra we sorteren op "nieuwste" zodat de laatste items bovenaan staan.
+    if (sortOrder !== "newest") {
+      return;
+    }
+    const targetRef = showArchive
+      ? archivedListRef.current
+      : activeListRef.current;
+    targetRef?.scrollToOffset({ offset: 0, animated: false });
+  }, [sortOrder, showArchive]);
+
+  useEffect(() => {
+    // Registreer web toast listeners zodat het scherm eigen meldingen kan renderen.
+    if (Platform.OS !== "web") {
+      return;
+    }
+    const unsubscribe = subscribeWebToast((toast) => {
+      const tone: WebToastTone = toast.tone ?? "info";
+      const duration = Math.min(Math.max(toast.durationMs ?? 3600, 1800), 8000);
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const entry: WebToastEntry = {
+        id,
+        title: toast.title,
+        message: toast.message,
+        tone,
+        expiresAt: Date.now() + duration,
+      };
+
+      setWebToasts((current) => {
+        const next = [...current];
+        const timers = webToastTimersRef.current;
+        while (next.length >= MAX_WEB_TOASTS) {
+          const removed = next.shift();
+          if (removed) {
+            const timerId = timers[removed.id];
+            if (timerId) {
+              clearTimeout(timerId);
+              delete timers[removed.id];
+            }
+          }
+        }
+        next.push(entry);
+        return next;
+      });
+
+      const timeoutId = setTimeout(() => {
+        removeToast(id);
+      }, duration);
+      webToastTimersRef.current[id] = timeoutId;
+    });
+
+    return () => {
+      unsubscribe();
+      const timers = webToastTimersRef.current;
+      Object.keys(timers).forEach((key) => {
+        clearTimeout(timers[key]);
+        delete timers[key];
+      });
+    };
+  }, [removeToast]);
 
   const priorityRank = (priority?: "low" | "medium" | "high" | null) => {
     if (priority === "high") return 2;
@@ -882,17 +1040,17 @@ const List: React.FC<ListScreenProps> = ({
     };
   }, [todos, archivedTodos, reverseGeocodeToDescription, saveAll]);
 
-  // Toon bevestigingsdialoog voordat iets verwijderd wordt
+  // Toon een platformspecifieke bevestiging voordat iets verwijderd wordt.
   const confirmDelete = useCallback(
     (title: string, message: string, onConfirm: () => void) => {
-      if (Platform.OS === "web") {
-        if (window.confirm(message)) onConfirm();
-        return;
-      }
       const cancelLabel =
         strings.cancel ?? (language === "nl" ? "Annuleer" : "Cancel");
       const deleteLabel =
         strings.delete ?? (language === "nl" ? "Verwijderen" : "Delete");
+      if (Platform.OS === "web") {
+        openWebConfirm(title, message, deleteLabel, cancelLabel, onConfirm);
+        return;
+      }
       Alert.alert(title, message, [
         {
           text: cancelLabel,
@@ -905,25 +1063,34 @@ const List: React.FC<ListScreenProps> = ({
         },
       ]);
     },
-    [language, strings]
+    [language, openWebConfirm, strings]
   );
 
   const showInputWarning = useCallback(
     (message: string) => {
       const title = language === "nl" ? "Let op" : "Warning";
       if (Platform.OS === "web") {
-        window.alert(`${title}: ${message}`);
-      } else {
-        const okLabel = "OK";
-        Alert.alert(title, message, [{ text: okLabel }]);
+        pushWebToast({ title, message, tone: "warning" });
+        return;
       }
+      const okLabel = "OK";
+      Alert.alert(title, message, [{ text: okLabel }]);
     },
     [language]
   );
 
   const showTaskFeedback = useCallback(
-    (kind: "added" | "updated" | "deleted", target: ListSource) => {
+    (
+      kind: "added" | "updated" | "deleted",
+      target: ListSource,
+      options?: { label?: string; entity?: "task" | "subtask" }
+    ) => {
+      // Bouw een korte statusboodschap op maat van de actie en het platform.
       const isArchiveTarget = target === "archive";
+      const rawLabel = options?.label?.trim();
+      const label = rawLabel && rawLabel.length ? rawLabel : null;
+      const entity = options?.entity ?? "task";
+      const isSubtask = entity === "subtask";
 
       let title: string;
       let message: string;
@@ -940,10 +1107,19 @@ const List: React.FC<ListScreenProps> = ({
             ? "De taak is bijgewerkt in je archief."
             : "De taak is bijgewerkt in je takenlijst.";
         } else {
-          title = "Taak verwijderd";
-          message = isArchiveTarget
-            ? "De taak is verwijderd uit je archief."
-            : "De taak is verwijderd uit je takenlijst.";
+          const contextNl = isArchiveTarget
+            ? "uit je archief"
+            : "uit je takenlijst";
+          title = isSubtask ? "Subtaak verwijderd" : "Taak verwijderd";
+          if (isSubtask) {
+            message = label
+              ? `Subtaak "${label}" is verwijderd.`
+              : "De subtaak is verwijderd.";
+          } else {
+            message = label
+              ? `Taak "${label}" is ${contextNl} verwijderd.`
+              : `De taak is ${contextNl} verwijderd.`;
+          }
         }
       } else {
         if (kind === "added") {
@@ -957,15 +1133,28 @@ const List: React.FC<ListScreenProps> = ({
             ? "The task was updated in your archive."
             : "The task was updated in your task list.";
         } else {
-          title = "Task deleted";
-          message = isArchiveTarget
-            ? "The task was removed from your archive."
-            : "The task was removed from your task list.";
+          const contextEn = isArchiveTarget
+            ? "from your archive"
+            : "from your task list";
+          title = isSubtask ? "Subtask deleted" : "Task deleted";
+          if (isSubtask) {
+            message = label
+              ? `Subtask "${label}" was removed.`
+              : "The subtask was removed.";
+          } else {
+            message = label
+              ? `Task "${label}" was removed ${contextEn}.`
+              : `The task was removed ${contextEn}.`;
+          }
         }
       }
 
-      if (kind === "deleted" && Platform.OS !== "android") {
-        // Het bevestigingsdialoog gaf al feedback; voorkom dubbele meldingen.
+      if (
+        kind === "deleted" &&
+        Platform.OS !== "android" &&
+        Platform.OS !== "web"
+      ) {
+        // iOS toont al een bevestigingsdialoog en heeft geen extra toast.
         return;
       }
 
@@ -975,7 +1164,9 @@ const List: React.FC<ListScreenProps> = ({
       }
 
       if (Platform.OS === "web") {
-        window.alert(`${title}: ${message}`);
+        const tone: WebToastTone =
+          kind === "deleted" ? "error" : kind === "added" ? "success" : "info";
+        pushWebToast({ title, message, tone });
         return;
       }
 
@@ -1434,12 +1625,16 @@ const List: React.FC<ListScreenProps> = ({
         if (!parent) {
           return;
         }
+        const removedSubtask = parent.subtasks[subIndex];
         const filteredSubtasks = parent.subtasks.filter(
           (_, i) => i !== subIndex
         );
         targetList[todoIndex] = { ...parent, subtasks: filteredSubtasks };
         saveAll(updatedTodos, updatedArchived);
-        showTaskFeedback("deleted", source);
+        showTaskFeedback("deleted", source, {
+          entity: "subtask",
+          label: removedSubtask?.text,
+        });
       });
     },
     [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos]
@@ -1459,11 +1654,14 @@ const List: React.FC<ListScreenProps> = ({
   const removeTodo = useCallback(
     (index: number) => {
       confirmDelete(strings.confirmDelete, strings.deleteTask, () => {
+        const removed = todos[index];
         saveAll(
           todos.filter((_, i) => i !== index),
           archivedTodos
         );
-        showTaskFeedback("deleted", "active");
+        showTaskFeedback("deleted", "active", {
+          label: removed?.text,
+        });
       });
     },
     [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos]
@@ -1503,11 +1701,14 @@ const List: React.FC<ListScreenProps> = ({
   const removeArchivedTodo = useCallback(
     (index: number) => {
       confirmDelete(strings.confirmDelete, strings.deleteTask, () => {
+        const removed = archivedTodos[index];
         saveAll(
           todos,
           archivedTodos.filter((_, i) => i !== index)
         );
-        showTaskFeedback("deleted", "archive");
+        showTaskFeedback("deleted", "archive", {
+          label: removed?.text,
+        });
       });
     },
     [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos]
@@ -1894,6 +2095,7 @@ const List: React.FC<ListScreenProps> = ({
         const servicesEnabled =
           (await Location.hasServicesEnabledAsync?.()) ?? true;
         if (!servicesEnabled) {
+          setUserLocation(null);
           setLocationHelperMessage(
             language === "nl"
               ? "Locatieservices staan uit. Kies handmatig een locatie op de kaart."
@@ -1913,11 +2115,13 @@ const List: React.FC<ListScreenProps> = ({
                 (await Location.getCurrentPositionAsync({
                   accuracy: Location.Accuracy.Balanced,
                 }));
+              const currentLatLng = {
+                latitude: current.coords.latitude,
+                longitude: current.coords.longitude,
+              };
+              setUserLocation(currentLatLng);
               if (!workingLocation) {
-                workingLocation = {
-                  latitude: current.coords.latitude,
-                  longitude: current.coords.longitude,
-                };
+                workingLocation = { ...currentLatLng };
                 workingRegion = {
                   latitude: workingLocation.latitude,
                   longitude: workingLocation.longitude,
@@ -1927,6 +2131,7 @@ const List: React.FC<ListScreenProps> = ({
               }
             } catch (err) {
               console.log("Kon huidige locatie niet ophalen:", err);
+              setUserLocation(null);
               setLocationHelperMessage(
                 language === "nl"
                   ? "Kon huidige locatie niet ophalen. Kies handmatig een locatie."
@@ -1934,6 +2139,7 @@ const List: React.FC<ListScreenProps> = ({
               );
             }
           } else {
+            setUserLocation(null);
             setLocationHelperMessage(
               language === "nl"
                 ? "Locatietoegang geweigerd. Kies handmatig een locatie op de kaart."
@@ -1941,6 +2147,7 @@ const List: React.FC<ListScreenProps> = ({
             );
           }
         } else {
+          setUserLocation(null);
           setLocationHelperMessage(
             language === "nl"
               ? "expo-location niet beschikbaar. Kies handmatig een locatie op de kaart."
@@ -1963,6 +2170,7 @@ const List: React.FC<ListScreenProps> = ({
         setSelectedLocationDescription(seededDescription ?? null);
       } catch (err) {
         console.log("Locatie ophalen mislukt:", err);
+        setUserLocation(null);
         const fallbackRegion = workingLocation
           ? {
               latitude: workingLocation.latitude,
@@ -2116,7 +2324,16 @@ const List: React.FC<ListScreenProps> = ({
   const clearLocationSelection = () => {
     setSelectedLocation(null);
     setSelectedLocationDescription(null);
-    setMapRegion(DEFAULT_REGION);
+    setMapRegion(
+      userLocation
+        ? {
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }
+        : DEFAULT_REGION
+    );
     setLocationHelperMessage(null);
     setLocationLoading(false);
     setLocationSearchText("");
@@ -2629,7 +2846,9 @@ const List: React.FC<ListScreenProps> = ({
     () => ({
       editTask: strings.editTask,
       taskName: strings.taskName,
+      deadline: strings.deadline,
       clearDeadline: strings.clearDeadline,
+      deadlineOverdue: strings.deadlineOverdue,
       noDeadline: strings.noDeadline,
       addPhoto: strings.addPhoto,
       noPhoto: strings.noPhoto,
@@ -2746,6 +2965,77 @@ const List: React.FC<ListScreenProps> = ({
         paddingBottom: 120,
       }}
     >
+      {Platform.OS === "web" && webToasts.length > 0 && (
+        // Stapel toasts rechtsboven zodat meerdere meldingen zichtbaar blijven.
+        <View pointerEvents="box-none" style={webToastStyles.host}>
+          {webToasts.map((toast) => (
+            <Pressable
+              key={toast.id}
+              onPress={() => removeToast(toast.id)}
+              style={({ pressed }) => [
+                webToastStyles.toast,
+                webToastStyles[toast.tone],
+                pressed && webToastStyles.toastPressed,
+              ]}
+            >
+              <Text style={webToastStyles.toastTitle}>{toast.title}</Text>
+              <Text style={webToastStyles.toastMessage}>{toast.message}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {Platform.OS === "web" && webConfirmDialog && (
+        // Web gebruikt een custom modal zodat de rest van het scherm geblokkeerd blijft tijdens bevestigen.
+        <Modal
+          transparent
+          animationType="fade"
+          visible
+          onRequestClose={handleWebConfirmCancel}
+        >
+          <View style={webConfirmStyles.overlay}>
+            <Pressable
+              onPress={handleWebConfirmCancel}
+              style={webConfirmStyles.backdrop}
+              accessibilityRole="button"
+              accessibilityLabel={webConfirmDialog.cancelLabel}
+            />
+            <View style={webConfirmStyles.panel}>
+              <Text style={webConfirmStyles.title}>
+                {webConfirmDialog.title}
+              </Text>
+              <Text style={webConfirmStyles.message}>
+                {webConfirmDialog.message}
+              </Text>
+              <View style={webConfirmStyles.actions}>
+                <Pressable
+                  onPress={handleWebConfirmCancel}
+                  style={({ pressed }) => [
+                    webConfirmStyles.button,
+                    webConfirmStyles.secondaryButton,
+                    pressed && webConfirmStyles.buttonPressed,
+                  ]}
+                >
+                  <Text style={webConfirmStyles.secondaryLabel}>
+                    {webConfirmDialog.cancelLabel}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleWebConfirmConfirm}
+                  style={({ pressed }) => [
+                    webConfirmStyles.button,
+                    webConfirmStyles.primaryButton,
+                    pressed && webConfirmStyles.buttonPressed,
+                  ]}
+                >
+                  <Text style={webConfirmStyles.primaryLabel}>
+                    {webConfirmDialog.confirmLabel}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
       {Platform.OS === "web" && webPickerState && (
         <Modal
           transparent
@@ -2914,6 +3204,7 @@ const List: React.FC<ListScreenProps> = ({
               }
             : null)
         }
+        userLocation={userLocation}
         onMapPress={handleMapPress}
         onMarkerDragEnd={handleMarkerDragEnd}
       />
@@ -2975,12 +3266,14 @@ const List: React.FC<ListScreenProps> = ({
       <TaskEditorModal
         visible={taskEditorVisible}
         colors={colors}
+        theme={theme}
         taskText={taskEditorText}
         onChangeText={setTaskEditorText}
         onOpenDate={openTaskEditorDate}
         onOpenTime={openTaskEditorTime}
         onClearDeadline={clearTaskEditorDeadline}
         deadlinePreview={taskEditorDeadlineDisplay}
+        deadlineISO={editorDeadlinePreview ?? editingTodo?.deadline ?? null}
         showDatePicker={showTaskEditorDatePicker}
         showTimePicker={showTaskEditorTimePicker}
         dateValue={taskEditorDate}
@@ -3097,6 +3390,7 @@ const List: React.FC<ListScreenProps> = ({
             openSubtaskEditor={openSubtaskEditor}
             removeSubtask={removeSubtask}
             beginInlineSubtaskCreation={beginInlineSubtaskCreation}
+            listRef={activeListRef}
           />
         </>
       ) : (
@@ -3169,6 +3463,7 @@ const List: React.FC<ListScreenProps> = ({
             openSubtaskEditor={openSubtaskEditor}
             removeSubtask={removeSubtask}
             beginInlineSubtaskCreation={beginInlineSubtaskCreation}
+            listRef={archivedListRef}
           />
         </>
       )}
@@ -3194,6 +3489,157 @@ const List: React.FC<ListScreenProps> = ({
       </Pressable>
     </View>
   );
+};
+
+const createWebConfirmStyles = (
+  colors: ThemeColors,
+  theme: "light" | "dark"
+) => {
+  // Deze stijlen bepalen de lichte/donkere uitstraling van de web confirm modal.
+  const isLight = theme === "light";
+  const primary = colors.deleteButton;
+  return StyleSheet.create({
+    overlay: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 24,
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.5)",
+    },
+    panel: {
+      width: "100%",
+      maxWidth: 420,
+      backgroundColor: colors.formBackground,
+      borderRadius: 24,
+      paddingVertical: 22,
+      paddingHorizontal: 24,
+      shadowColor: "#000",
+      shadowOpacity: isLight ? 0.12 : 0.35,
+      shadowRadius: 28,
+      shadowOffset: { width: 0, height: 18 },
+      elevation: 18,
+    },
+    title: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: colors.text,
+      marginBottom: 12,
+    },
+    message: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.text,
+      marginBottom: 24,
+    },
+    actions: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+    },
+    button: {
+      minWidth: 120,
+      borderRadius: 16,
+      paddingVertical: 12,
+      paddingHorizontal: 18,
+      alignItems: "center",
+      justifyContent: "center",
+      marginLeft: 12,
+      shadowColor: "#000",
+      shadowOpacity: isLight ? 0.08 : 0.22,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 10,
+    },
+    buttonPressed: {
+      opacity: 0.9,
+      transform: [{ scale: 0.97 }],
+    },
+    secondaryButton: {
+      backgroundColor: colors.toggleButton,
+    },
+    primaryButton: {
+      backgroundColor: primary,
+    },
+    secondaryLabel: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: isLight ? "#20242B" : "#ECEFF6",
+    },
+    primaryLabel: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: "#FFFFFF",
+    },
+  });
+};
+
+const createWebToastStyles = (colors: ThemeColors, theme: "light" | "dark") => {
+  const palette: Record<WebToastTone, string> = {
+    info: colors.addButton,
+    success: theme === "light" ? "#32D74B" : "#30D158",
+    warning: theme === "light" ? "#FF9F0A" : "#FFD60A",
+    error: colors.deleteButton,
+  };
+  const baseBorder =
+    theme === "light" ? "rgba(7, 18, 43, 0.08)" : "rgba(240, 245, 255, 0.16)";
+  const shadowStrength = theme === "light" ? 0.18 : 0.35;
+
+  return StyleSheet.create({
+    host: {
+      position: "absolute",
+      top: 20,
+      right: 20,
+      left: 20,
+      alignItems: "flex-end",
+    },
+    toast: {
+      width: "100%",
+      maxWidth: 360,
+      backgroundColor: colors.formBackground,
+      borderRadius: 14,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      borderWidth: 1,
+      borderColor: baseBorder,
+      shadowOpacity: shadowStrength,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 12 },
+      elevation: 12,
+      marginBottom: 12,
+    },
+    toastPressed: {
+      opacity: 0.82,
+    },
+    toastTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: "700",
+      marginBottom: 4,
+    },
+    toastMessage: {
+      color: colors.text,
+      fontSize: 14,
+      lineHeight: 18,
+    },
+    info: {
+      borderColor: palette.info,
+      shadowColor: palette.info,
+    },
+    success: {
+      borderColor: palette.success,
+      shadowColor: palette.success,
+    },
+    warning: {
+      borderColor: palette.warning,
+      shadowColor: palette.warning,
+    },
+    error: {
+      borderColor: palette.error,
+      shadowColor: palette.error,
+    },
+  });
 };
 
 const createFloatingAddButtonStyles = (

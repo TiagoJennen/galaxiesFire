@@ -1,3 +1,4 @@
+// Lijst die actieve hoofd en subtaken rendert
 import React, { memo, useMemo } from "react";
 import {
   Image,
@@ -8,6 +9,7 @@ import {
   Platform,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
+import type { FlashListRef } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
 import type { ThemeColors } from "../theme";
 import type { ListSource, SubTodo, Todo } from "../types";
@@ -58,6 +60,7 @@ type ActiveTodoListProps = {
     source?: ListSource
   ) => void;
   beginInlineSubtaskCreation: (todoIndex: number, source: ListSource) => void;
+  listRef?: React.MutableRefObject<FlashListRef<DisplayTodo> | null>;
 };
 
 // Lijstweergave voor actieve taken met subtaken, media-acties en snelle bewerkingen.
@@ -80,7 +83,9 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
   openSubtaskEditor,
   removeSubtask,
   beginInlineSubtaskCreation,
+  listRef,
 }) => {
+  // Genereer thema-afhankelijke stijlen zodat light/dark consistent blijft.
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   const accent = colors.addButton;
 
@@ -93,24 +98,30 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
   // FlashList zorgt voor performant scrollen, ook wanneer elke kaart veel interacties bevat.
   return (
     <FlashList
+      ref={listRef ?? undefined}
       data={displayTodos}
       keyExtractor={(entry) => entry.originalIndex.toString()}
       estimatedItemSize={320}
       style={listStyle}
       contentContainerStyle={listContentStyle}
       renderItem={({ item: displayEntry }) => {
+        // Gebruik displayEntry zodat sorteringen en originele index bewaard blijven.
         const item = displayEntry.item;
         const originalIndex = displayEntry.originalIndex;
         // Deadline-informatie wordt vooraf berekend zodat we waarschuwingen conditioneel kunnen tonen.
         const deadlineDate = item.deadline ? new Date(item.deadline) : null;
-        const today = new Date();
-        const isSameDay =
-          deadlineDate &&
-          deadlineDate.getDate() === today.getDate() &&
-          deadlineDate.getMonth() === today.getMonth() &&
-          deadlineDate.getFullYear() === today.getFullYear();
-        const deadlinePassed =
-          deadlineDate && (deadlineDate < today || isSameDay);
+        const deadlineTime = deadlineDate ? deadlineDate.getTime() : null;
+        const now = Date.now();
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        const startOfTomorrow = new Date(startOfToday);
+        startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+        const isDeadlineToday =
+          deadlineTime !== null &&
+          deadlineTime >= startOfToday.getTime() &&
+          deadlineTime < startOfTomorrow.getTime();
+        const isDeadlineOverdue = deadlineTime !== null && deadlineTime < now;
+        const highlightDeadline = isDeadlineOverdue || isDeadlineToday;
         const addedLabel =
           (strings as any).added ??
           (language === "nl" ? "Toegevoegd" : "Added");
@@ -164,14 +175,30 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                     </Text>
                   ) : null}
                   {item.deadline ? (
-                    <Text
-                      style={[
-                        styles.metaText,
-                        deadlinePassed && styles.deadlineWarning,
-                      ]}
-                    >
-                      {strings.deadline}: {formatDate(item.deadline)}
-                    </Text>
+                    <View style={styles.deadlineMeta}>
+                      <Text
+                        style={[
+                          styles.metaText,
+                          styles.deadlineMetaText,
+                          highlightDeadline && styles.deadlineWarning,
+                        ]}
+                      >
+                        {strings.deadline}: {formatDate(item.deadline)}
+                      </Text>
+                      {isDeadlineOverdue ? (
+                        <View style={styles.deadlineBadge}>
+                          <Ionicons
+                            name="alert-circle"
+                            size={12}
+                            color={colors.deleteButton}
+                            style={styles.deadlineBadgeIcon}
+                          />
+                          <Text style={styles.deadlineBadgeText}>
+                            {strings.deadlineOverdue}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
                   ) : null}
                 </View>
               </View>
@@ -296,187 +323,234 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
 
             {/* Subtaken worden eerst genormaliseerd via buildSubtaskDisplay zodat filtering en sortering centraal blijft. */}
             {buildSubtaskDisplay(item.subtasks).map(
-              ({ sub, originalIndex: subIndex }) => (
-                <View
-                  key={`todo-${originalIndex}-sub-${subIndex}`}
-                  style={styles.subtaskRow}
-                >
-                  <Pressable
-                    onPress={() => toggleSubtask(originalIndex, subIndex)}
-                    style={({ pressed }) => [
-                      styles.subtaskCheck,
-                      sub.done && styles.subtaskCheckDone,
-                      pressed && styles.subtaskCheckPressed,
-                    ]}
+              ({ sub, originalIndex: subIndex }) => {
+                const subDeadlineDate = sub.deadline
+                  ? new Date(sub.deadline)
+                  : null;
+                const subDeadlineTime = subDeadlineDate
+                  ? subDeadlineDate.getTime()
+                  : null;
+                const subDeadlineOverdue =
+                  subDeadlineTime !== null && subDeadlineTime < now;
+                const highlightSubDeadline =
+                  subDeadlineOverdue ||
+                  (subDeadlineTime !== null &&
+                    subDeadlineTime >= startOfToday.getTime() &&
+                    subDeadlineTime < startOfTomorrow.getTime());
+
+                return (
+                  <View
+                    key={`todo-${originalIndex}-sub-${subIndex}`}
+                    style={styles.subtaskRow}
                   >
-                    <Ionicons
-                      name={sub.done ? "checkmark-circle" : "ellipse-outline"}
-                      size={22}
-                      color={
-                        sub.done ? accent : (styles.checkIcon.color as string)
-                      }
-                    />
-                  </Pressable>
-                  <View style={styles.subtaskContent}>
-                    {sub.priority && (
-                      <View
-                        style={[
-                          styles.subtaskPriority,
-                          sub.priority === "high"
-                            ? styles.priorityHigh
-                            : sub.priority === "medium"
-                              ? styles.priorityMedium
-                              : styles.priorityLow,
-                        ]}
-                      >
-                        <Text style={styles.subtaskPriorityText}>
-                          {sub.priority.toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
-                    <Text
-                      style={[
-                        styles.subtaskText,
-                        sub.done && styles.subtaskTextDone,
+                    <Pressable
+                      onPress={() => toggleSubtask(originalIndex, subIndex)}
+                      style={({ pressed }) => [
+                        styles.subtaskCheck,
+                        sub.done && styles.subtaskCheckDone,
+                        pressed && styles.subtaskCheckPressed,
                       ]}
-                      numberOfLines={3}
                     >
-                      {sub.text}
-                    </Text>
-                    <View style={styles.metaRow}>
-                      {sub.createdAt ? (
-                        <Text style={styles.metaText}>
-                          {addedLabel}: {formatDate(sub.createdAt)}
-                        </Text>
-                      ) : null}
-                      {sub.deadline ? (
-                        <Text
+                      <Ionicons
+                        name={sub.done ? "checkmark-circle" : "ellipse-outline"}
+                        size={22}
+                        color={
+                          sub.done ? accent : (styles.checkIcon.color as string)
+                        }
+                      />
+                    </Pressable>
+                    <View style={styles.subtaskContent}>
+                      {sub.priority && (
+                        <View
                           style={[
-                            styles.metaText,
-                            new Date(sub.deadline) < new Date() &&
-                              styles.deadlineWarning,
+                            styles.subtaskPriority,
+                            sub.priority === "high"
+                              ? styles.priorityHigh
+                              : sub.priority === "medium"
+                                ? styles.priorityMedium
+                                : styles.priorityLow,
                           ]}
                         >
-                          {strings.deadline}: {formatDate(sub.deadline)}
-                        </Text>
-                      ) : null}
+                          <Text style={styles.subtaskPriorityText}>
+                            {sub.priority.toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      <Text
+                        style={[
+                          styles.subtaskText,
+                          sub.done && styles.subtaskTextDone,
+                        ]}
+                        numberOfLines={3}
+                      >
+                        {sub.text}
+                      </Text>
+                      <View style={styles.metaRow}>
+                        {sub.createdAt ? (
+                          <Text style={styles.metaText}>
+                            {addedLabel}: {formatDate(sub.createdAt)}
+                          </Text>
+                        ) : null}
+                        {sub.deadline ? (
+                          <View style={styles.deadlineMeta}>
+                            <Text
+                              style={[
+                                styles.metaText,
+                                styles.deadlineMetaText,
+                                highlightSubDeadline && styles.deadlineWarning,
+                              ]}
+                            >
+                              {strings.deadline}: {formatDate(sub.deadline)}
+                            </Text>
+                            {subDeadlineOverdue ? (
+                              <View style={styles.deadlineBadge}>
+                                <Ionicons
+                                  name="alert-circle"
+                                  size={12}
+                                  color={colors.deleteButton}
+                                  style={styles.deadlineBadgeIcon}
+                                />
+                                <Text style={styles.deadlineBadgeText}>
+                                  {strings.deadlineOverdue}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        ) : null}
+                      </View>
+                      {sub.location && (
+                        <Pressable
+                          onPress={() =>
+                            openLocationPicker(
+                              originalIndex,
+                              "active",
+                              subIndex
+                            )
+                          }
+                          accessibilityRole="button"
+                          accessibilityHint={
+                            language === "nl"
+                              ? "Wijzig de locatie van deze subtaak."
+                              : "Edit this subtask's location."
+                          }
+                          style={({ pressed }) => [
+                            styles.locationLink,
+                            pressed && styles.locationLinkPressed,
+                          ]}
+                        >
+                          <Ionicons
+                            name="location-outline"
+                            size={14}
+                            color={accent}
+                            style={styles.locationIcon}
+                          />
+                          <Text style={styles.locationText} numberOfLines={2}>
+                            {strings.locationLabel}:{" "}
+                            {getLocationDisplay(
+                              sub.location,
+                              sub.locationDescription ?? null
+                            )}
+                          </Text>
+                        </Pressable>
+                      )}
+                      {sub.image && (
+                        <Image
+                          source={{ uri: sub.image }}
+                          style={styles.subtaskImage}
+                        />
+                      )}
+                      <View style={styles.mediaRow}>
+                        <Pressable
+                          onPress={() =>
+                            pickImage(true, originalIndex, subIndex)
+                          }
+                          style={({ pressed }) => [
+                            styles.mediaButton,
+                            pressed && styles.mediaButtonPressed,
+                          ]}
+                        >
+                          <Ionicons
+                            name="camera-outline"
+                            size={16}
+                            color={accent}
+                            style={styles.mediaIcon}
+                          />
+                          <Text style={styles.mediaLabel}>
+                            {strings.addPhoto}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() =>
+                            pickImage(
+                              true,
+                              originalIndex,
+                              subIndex,
+                              false,
+                              true
+                            )
+                          }
+                          style={({ pressed }) => [
+                            styles.mediaButton,
+                            pressed && styles.mediaButtonPressed,
+                          ]}
+                        >
+                          <Ionicons
+                            name="image-outline"
+                            size={16}
+                            color={accent}
+                            style={styles.mediaIcon}
+                          />
+                          <Text style={styles.mediaLabel}>
+                            {strings.pickFromGallery}
+                          </Text>
+                        </Pressable>
+                      </View>
                     </View>
-                    {sub.location && (
+                    <View style={styles.subtaskIconCluster}>
                       <Pressable
                         onPress={() =>
-                          openLocationPicker(originalIndex, "active", subIndex)
+                          openSubtaskEditor(originalIndex, subIndex)
                         }
-                        accessibilityRole="button"
+                        accessibilityLabel={
+                          language === "nl"
+                            ? "Subtaak bewerken"
+                            : "Edit subtask"
+                        }
                         accessibilityHint={
                           language === "nl"
-                            ? "Wijzig de locatie van deze subtaak."
-                            : "Edit this subtask's location."
+                            ? "Pas de naam, deadline of foto van deze subtaak aan."
+                            : "Update the name, deadline, or photo for this subtask."
                         }
                         style={({ pressed }) => [
-                          styles.locationLink,
-                          pressed && styles.locationLinkPressed,
+                          styles.iconButton,
+                          pressed && styles.iconButtonPressed,
                         ]}
                       >
                         <Ionicons
-                          name="location-outline"
-                          size={14}
-                          color={accent}
-                          style={styles.locationIcon}
-                        />
-                        <Text style={styles.locationText} numberOfLines={2}>
-                          {strings.locationLabel}:{" "}
-                          {getLocationDisplay(
-                            sub.location,
-                            sub.locationDescription ?? null
-                          )}
-                        </Text>
-                      </Pressable>
-                    )}
-                    {sub.image && (
-                      <Image
-                        source={{ uri: sub.image }}
-                        style={styles.subtaskImage}
-                      />
-                    )}
-                    <View style={styles.mediaRow}>
-                      <Pressable
-                        onPress={() => pickImage(true, originalIndex, subIndex)}
-                        style={({ pressed }) => [
-                          styles.mediaButton,
-                          pressed && styles.mediaButtonPressed,
-                        ]}
-                      >
-                        <Ionicons
-                          name="camera-outline"
+                          name="create-outline"
                           size={16}
                           color={accent}
-                          style={styles.mediaIcon}
                         />
-                        <Text style={styles.mediaLabel}>
-                          {strings.addPhoto}
-                        </Text>
                       </Pressable>
                       <Pressable
                         onPress={() =>
-                          pickImage(true, originalIndex, subIndex, false, true)
+                          removeSubtask(originalIndex, subIndex, "active")
                         }
                         style={({ pressed }) => [
-                          styles.mediaButton,
-                          pressed && styles.mediaButtonPressed,
+                          styles.iconButton,
+                          pressed && styles.iconButtonPressed,
                         ]}
                       >
                         <Ionicons
-                          name="image-outline"
+                          name="trash-outline"
                           size={16}
-                          color={accent}
-                          style={styles.mediaIcon}
+                          color={colors.deleteButton}
                         />
-                        <Text style={styles.mediaLabel}>
-                          {strings.pickFromGallery}
-                        </Text>
                       </Pressable>
                     </View>
                   </View>
-                  <View style={styles.subtaskIconCluster}>
-                    <Pressable
-                      onPress={() => openSubtaskEditor(originalIndex, subIndex)}
-                      accessibilityLabel={
-                        language === "nl" ? "Subtaak bewerken" : "Edit subtask"
-                      }
-                      accessibilityHint={
-                        language === "nl"
-                          ? "Pas de naam, deadline of foto van deze subtaak aan."
-                          : "Update the name, deadline, or photo for this subtask."
-                      }
-                      style={({ pressed }) => [
-                        styles.iconButton,
-                        pressed && styles.iconButtonPressed,
-                      ]}
-                    >
-                      <Ionicons
-                        name="create-outline"
-                        size={16}
-                        color={accent}
-                      />
-                    </Pressable>
-                    <Pressable
-                      onPress={() =>
-                        removeSubtask(originalIndex, subIndex, "active")
-                      }
-                      style={({ pressed }) => [
-                        styles.iconButton,
-                        pressed && styles.iconButtonPressed,
-                      ]}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={16}
-                        color={colors.deleteButton}
-                      />
-                    </Pressable>
-                  </View>
-                </View>
-              )
+                );
+              }
             )}
 
             <Pressable
@@ -629,9 +703,36 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       marginRight: 14,
       marginTop: 2,
     },
+    deadlineMeta: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginRight: 14,
+      marginTop: 2,
+    },
+    deadlineMetaText: {
+      marginRight: 0,
+    },
     deadlineWarning: {
       color: "#FF3B30",
       fontWeight: "600",
+    },
+    deadlineBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 10,
+      backgroundColor: isLight ? "#FBE9E6" : "#2F1A1A",
+      marginLeft: 8,
+    },
+    deadlineBadgeIcon: {
+      marginRight: 4,
+    },
+    deadlineBadgeText: {
+      color: colors.deleteButton,
+      fontFamily: boldFont,
+      fontSize: 11,
+      letterSpacing: 0.2,
     },
     iconCluster: {
       flexDirection: "row",

@@ -1,3 +1,4 @@
+// Badgecomponent die in modals een label met bijbehorende waarde toont (deadline en locatie)
 import React from "react";
 import { View, Text } from "react-native";
 import type { ThemeColors } from "../theme";

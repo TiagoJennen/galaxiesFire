@@ -3,6 +3,7 @@ import * as TaskManager from "expo-task-manager";
 import * as Location from "expo-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
+import { pushWebToast } from "../../utils/webToast";
 
 // Naam van de achtergrondtaak waarmee Expo de geofence updates afvuurt.
 // Expo gebruikt deze identifier om de juiste callback terug te vinden; wijzigen verbreekt de koppeling.
@@ -32,28 +33,6 @@ let webActiveUserId: string | null = null;
 let webProcessingUpdate = false;
 let webNotified = new Set<string>();
 let webNotifiedLoadedFor: string | null = null;
-
-const supportsBrowserNotifications = () =>
-  typeof window !== "undefined" && "Notification" in window;
-
-const requestBrowserNotificationPermission = async (): Promise<boolean> => {
-  if (!supportsBrowserNotifications()) {
-    return false;
-  }
-  if (Notification.permission === "granted") {
-    return true;
-  }
-  if (Notification.permission === "denied") {
-    return false;
-  }
-  try {
-    const result = await Notification.requestPermission();
-    return result === "granted";
-  } catch (error) {
-    console.log("Browser notification permission error:", error);
-    return false;
-  }
-};
 
 const storeWebNotified = async () => {
   if (!webActiveUserId) {
@@ -112,29 +91,23 @@ const pruneWebNotified = () => {
   }
 };
 
+// Gebruik Expo-notifications op native en onze web toast op browsers.
 const sendWebNotification = async (
   title: string,
   body: string
 ): Promise<boolean> => {
+  if (isWeb) {
+    pushWebToast({ title, message: body, tone: "info", durationMs: 6000 });
+    return true;
+  }
   try {
     await Notifications.scheduleNotificationAsync({
       content: { title, body },
       trigger: null,
     });
     return true;
-  } catch (expoError) {
-    if (
-      supportsBrowserNotifications() &&
-      Notification.permission === "granted"
-    ) {
-      try {
-        new Notification(title, { body });
-        return true;
-      } catch (browserError) {
-        console.log("Browser notification error:", browserError);
-      }
-    }
-    console.log("Failed to schedule web notification:", expoError);
+  } catch (error) {
+    console.log("Failed to schedule notification:", error);
     return false;
   }
 };
@@ -251,10 +224,6 @@ const startWebLocationWatcher = async () => {
   }
   const locationGranted = await ensureGeoPermissions();
   if (!locationGranted) {
-    return;
-  }
-  const notificationsGranted = await requestBrowserNotificationPermission();
-  if (!notificationsGranted) {
     return;
   }
   if (webLocationSubscription) {

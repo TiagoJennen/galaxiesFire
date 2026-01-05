@@ -1,3 +1,4 @@
+// Modal voor hoofdtaakcreatie met samenvattende badges en confirm-knop.
 import React, { useMemo } from "react";
 import {
   Modal,

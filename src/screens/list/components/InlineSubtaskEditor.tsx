@@ -1,3 +1,4 @@
+// Compact subtaakformulier met prioriteit en datum/tijd/locatie knoppen.
 import React, { useMemo } from "react";
 import {
   View,

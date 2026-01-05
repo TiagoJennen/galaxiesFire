@@ -1,3 +1,4 @@
+// Kaartmodal om locaties te zoeken, slepen en bevestigen voor taken.
 import React, { useEffect, useRef, useState } from "react";
 import {
   View,
@@ -19,6 +20,7 @@ type WebMapProps = {
   cameraCenter: [number, number];
   cameraZoom: number;
   activeMarker: LatLng | null;
+  userLocation: LatLng | null;
   onMapPress: (event: any) => void;
   onMarkerDragEnd: (event: any) => void;
   colors: ThemeColors;
@@ -41,6 +43,7 @@ const WebMapPreview: React.FC<WebMapProps> = ({
   cameraCenter,
   cameraZoom,
   activeMarker,
+  userLocation,
   onMapPress,
   onMarkerDragEnd,
   colors,
@@ -49,6 +52,7 @@ const WebMapPreview: React.FC<WebMapProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
+  const userMarkerRef = useRef<any>(null);
   const [mapLibre, setMapLibre] = useState<any>(null);
 
   useEffect(() => {
@@ -82,6 +86,10 @@ const WebMapPreview: React.FC<WebMapProps> = ({
         markerRef.current.remove();
         markerRef.current = null;
       }
+      if (userMarkerRef.current) {
+        userMarkerRef.current.remove();
+        userMarkerRef.current = null;
+      }
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -100,17 +108,25 @@ const WebMapPreview: React.FC<WebMapProps> = ({
 
   useEffect(() => {
     if (!mapInstanceRef.current || !mapLibre) return;
+    if (!activeMarker) {
+      if (markerRef.current) {
+        markerRef.current.remove();
+        markerRef.current = null;
+      }
+      return;
+    }
     const createMarkerElement = () => {
       const outer = document.createElement("div");
       outer.style.width = "28px";
       outer.style.height = "28px";
       outer.style.borderRadius = "14px";
-      outer.style.border = "3px solid #fff";
       outer.style.backgroundColor = colors.addButton;
+      outer.style.border = "3px solid #fff";
       outer.style.display = "flex";
       outer.style.alignItems = "center";
       outer.style.justifyContent = "center";
-      outer.style.boxShadow = "0 2px 6px rgba(0,0,0,0.3)";
+      outer.style.position = "relative";
+      outer.style.boxShadow = "0 6px 12px rgba(0,0,0,0.25)";
 
       const inner = document.createElement("div");
       inner.style.width = "8px";
@@ -118,18 +134,30 @@ const WebMapPreview: React.FC<WebMapProps> = ({
       inner.style.borderRadius = "4px";
       inner.style.backgroundColor = "#fff";
 
+      const pointer = document.createElement("div");
+      pointer.style.position = "absolute";
+      pointer.style.bottom = "-10px";
+      pointer.style.left = "50%";
+      pointer.style.transform = "translateX(-50%)";
+      pointer.style.width = "0";
+      pointer.style.height = "0";
+      pointer.style.borderLeft = "7px solid transparent";
+      pointer.style.borderRight = "7px solid transparent";
+      pointer.style.borderTop = `10px solid ${colors.addButton}`;
+
       outer.appendChild(inner);
+      outer.appendChild(pointer);
       return outer;
     };
-    const target = activeMarker
-      ? [activeMarker.longitude, activeMarker.latitude]
-      : cameraCenter;
+    const target: [number, number] = [
+      activeMarker.longitude,
+      activeMarker.latitude,
+    ];
     if (!markerRef.current) {
-      const element = createMarkerElement();
       markerRef.current = new mapLibre.Marker({
         draggable: true,
-        element,
-        anchor: "center",
+        element: createMarkerElement(),
+        offset: [0, -14],
       })
         .setLngLat(target)
         .addTo(mapInstanceRef.current);
@@ -142,11 +170,42 @@ const WebMapPreview: React.FC<WebMapProps> = ({
     } else {
       markerRef.current.setLngLat(target);
     }
-    if (!activeMarker) {
-      const [lng, lat] = target;
-      onMarkerDragEnd({ geometry: { coordinates: [lng, lat] } });
+  }, [activeMarker, mapLibre, onMarkerDragEnd, colors.addButton]);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapLibre) return;
+    if (!userLocation) {
+      if (userMarkerRef.current) {
+        userMarkerRef.current.remove();
+        userMarkerRef.current = null;
+      }
+      return;
     }
-  }, [activeMarker, mapLibre, onMarkerDragEnd, cameraCenter, colors.addButton]);
+    const createUserMarkerElement = () => {
+      const outer = document.createElement("div");
+      outer.style.width = "22px";
+      outer.style.height = "22px";
+      outer.style.borderRadius = "11px";
+      outer.style.border = "2px solid #fff";
+      outer.style.backgroundColor = "#2563eb";
+      outer.style.boxShadow = "0 2px 4px rgba(37,99,235,0.4)";
+      return outer;
+    };
+    const coords: [number, number] = [
+      userLocation.longitude,
+      userLocation.latitude,
+    ];
+    if (!userMarkerRef.current) {
+      userMarkerRef.current = new mapLibre.Marker({
+        element: createUserMarkerElement(),
+        anchor: "center",
+      })
+        .setLngLat(coords)
+        .addTo(mapInstanceRef.current);
+    } else {
+      userMarkerRef.current.setLngLat(coords);
+    }
+  }, [userLocation, mapLibre]);
 
   if (!mapLibre) {
     return (
@@ -192,6 +251,7 @@ type LocationModalProps = {
   cameraCenter: [number, number];
   cameraZoom: number;
   activeMarker: LatLng | null; // Huidige locatie marker
+  userLocation: LatLng | null;
   onMapPress: (event: any) => void;
   onMarkerDragEnd: (event: any) => void;
 };
@@ -214,6 +274,7 @@ const LocationModal: React.FC<LocationModalProps> = ({
   cameraCenter,
   cameraZoom,
   activeMarker,
+  userLocation,
   onMapPress,
   onMarkerDragEnd,
 }) => {
@@ -342,38 +403,88 @@ const LocationModal: React.FC<LocationModalProps> = ({
                   animationMode="easeTo"
                   animationDuration={500}
                 />
-                <MapLibreGL.PointAnnotation
-                  id="selected-location"
-                  coordinate={
-                    activeMarker
-                      ? [activeMarker.longitude, activeMarker.latitude]
-                      : cameraCenter
-                  }
-                  draggable
-                  onDragEnd={onMarkerDragEnd}
-                >
-                  <View
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 14,
-                      borderWidth: 3,
-                      borderColor: "#fff",
-                      backgroundColor: colors.addButton,
-                      justifyContent: "center",
-                      alignItems: "center",
-                    }}
+                {userLocation && (
+                  <MapLibreGL.PointAnnotation
+                    id="user-location"
+                    coordinate={[userLocation.longitude, userLocation.latitude]}
+                    anchor={{ x: 0.5, y: 0.5 }}
                   >
                     <View
                       style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: "#fff",
+                        width: 22,
+                        height: 22,
+                        borderRadius: 11,
+                        borderWidth: 2,
+                        borderColor: "#fff",
+                        backgroundColor: "#2563eb",
+                        justifyContent: "center",
+                        alignItems: "center",
                       }}
-                    />
-                  </View>
-                </MapLibreGL.PointAnnotation>
+                    >
+                      <View
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: 3,
+                          backgroundColor: "#fff",
+                        }}
+                      />
+                    </View>
+                  </MapLibreGL.PointAnnotation>
+                )}
+                {activeMarker && (
+                  <MapLibreGL.PointAnnotation
+                    id="selected-location"
+                    coordinate={[activeMarker.longitude, activeMarker.latitude]}
+                    draggable
+                    onDragEnd={onMarkerDragEnd}
+                    anchor={{ x: 0.5, y: 1 }}
+                  >
+                    <View
+                      style={{
+                        alignItems: "center",
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 14,
+                          borderWidth: 3,
+                          borderColor: "#fff",
+                          backgroundColor: colors.addButton,
+                          justifyContent: "center",
+                          alignItems: "center",
+                          shadowColor: "#000",
+                          shadowOpacity: 0.25,
+                          shadowRadius: 4,
+                          shadowOffset: { width: 0, height: 2 },
+                          elevation: 6,
+                        }}
+                      >
+                        <Ionicons
+                          name="location-sharp"
+                          size={18}
+                          color="#fff"
+                        />
+                      </View>
+                      <View
+                        style={{
+                          marginTop: -3,
+                          width: 0,
+                          height: 0,
+                          borderLeftWidth: 7,
+                          borderRightWidth: 7,
+                          borderTopWidth: 8,
+                          borderLeftColor: "transparent",
+                          borderRightColor: "transparent",
+                          borderTopColor: colors.addButton,
+                          transform: [{ translateY: -1 }],
+                        }}
+                      />
+                    </View>
+                  </MapLibreGL.PointAnnotation>
+                )}
               </MapLibreGL.MapView>
             ) : (
               <WebMapPreview
@@ -381,6 +492,7 @@ const LocationModal: React.FC<LocationModalProps> = ({
                 cameraCenter={cameraCenter}
                 cameraZoom={cameraZoom}
                 activeMarker={activeMarker}
+                userLocation={userLocation}
                 onMapPress={onMapPress}
                 onMarkerDragEnd={onMarkerDragEnd}
                 colors={colors}
