@@ -49,13 +49,15 @@ const WebMapPreview: React.FC<WebMapProps> = ({
   colors,
   language,
 }) => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<any>(null);
   const mapInstanceRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const userMarkerRef = useRef<any>(null);
   const [mapLibre, setMapLibre] = useState<any>(null);
+  const isWeb = Platform.OS === "web";
 
   useEffect(() => {
+    if (!isWeb) return;
     ensureMapLibreCss();
     let cancelled = false;
     (async () => {
@@ -95,18 +97,20 @@ const WebMapPreview: React.FC<WebMapProps> = ({
         mapInstanceRef.current = null;
       }
     };
-  }, [mapStyleUrl, cameraCenter, cameraZoom, onMapPress]);
+  }, [isWeb, mapStyleUrl, cameraCenter, cameraZoom, onMapPress]);
 
   useEffect(() => {
+    if (!isWeb) return;
     if (!mapInstanceRef.current) return;
     mapInstanceRef.current.easeTo({
       center: cameraCenter,
       zoom: cameraZoom,
       duration: 500,
     });
-  }, [cameraCenter, cameraZoom]);
+  }, [isWeb, cameraCenter, cameraZoom]);
 
   useEffect(() => {
+    if (!isWeb) return;
     if (!mapInstanceRef.current || !mapLibre) return;
     if (!activeMarker) {
       if (markerRef.current) {
@@ -170,9 +174,10 @@ const WebMapPreview: React.FC<WebMapProps> = ({
     } else {
       markerRef.current.setLngLat(target);
     }
-  }, [activeMarker, mapLibre, onMarkerDragEnd, colors.addButton]);
+  }, [isWeb, activeMarker, mapLibre, onMarkerDragEnd, colors.addButton]);
 
   useEffect(() => {
+    if (!isWeb) return;
     if (!mapInstanceRef.current || !mapLibre) return;
     if (!userLocation) {
       if (userMarkerRef.current) {
@@ -205,7 +210,39 @@ const WebMapPreview: React.FC<WebMapProps> = ({
     } else {
       userMarkerRef.current.setLngLat(coords);
     }
-  }, [userLocation, mapLibre]);
+  }, [isWeb, userLocation, mapLibre]);
+
+  if (!isWeb) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: 24,
+        }}
+      >
+        <Ionicons
+          name="map-outline"
+          size={36}
+          color={colors.placeholder}
+          style={{ marginBottom: 12 }}
+        />
+        <Text
+          style={{
+            color: colors.placeholder,
+            textAlign: "center",
+            fontWeight: "500",
+            marginBottom: 8,
+          }}
+        >
+          {language === "nl"
+            ? "De kaartweergave is niet beschikbaar in Expo Go. Gebruik de zoekbalk om coördinaten te kiezen."
+            : "Map preview is unavailable in Expo Go. Use the search bar to select coordinates."}
+        </Text>
+      </View>
+    );
+  }
 
   if (!mapLibre) {
     return (
@@ -309,7 +346,7 @@ const LocationModal: React.FC<LocationModalProps> = ({
             alignSelf: "center",
           }}
         >
-          {/* Helper message (bv. waarschuwing) */}
+          {/* Inhoud van de modal */}
           {helperMessage && (
             <View
               style={{

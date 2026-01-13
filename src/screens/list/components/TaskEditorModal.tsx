@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Platform,
   ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import DateTimePicker, {
   DateTimePickerEvent,
@@ -95,8 +96,12 @@ export const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
   locationDescription,
   strings,
 }) => {
+  const { width, height } = useWindowDimensions();
   // Modal om een bestaande taak te bewerken; web en native delen dezelfde layout.
-  const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
+  const styles = useMemo(
+    () => createStyles(colors, theme, { width, height }),
+    [colors, theme, height, width]
+  );
 
   if (!visible || !editingTodo) {
     return null;
@@ -454,13 +459,46 @@ export const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
 
 export default TaskEditorModal;
 
-const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
+const createStyles = (
+  colors: ThemeColors,
+  theme: "light" | "dark",
+  layout: { width: number; height: number }
+) => {
   const isLight = theme === "light";
   const accent = colors.addButton;
   const isWeb = Platform.OS === "web";
+  const { width, height } = layout;
 
   const panelPadding = isWeb ? 22 : 24;
   const overlayPadding = isWeb ? 18 : 24;
+  const maxPanelWidth = isWeb ? 520 : 560;
+  const horizontalSpace = width - overlayPadding * 2;
+  let panelWidth = Math.min(
+    maxPanelWidth,
+    horizontalSpace > 0 ? horizontalSpace : Math.max(width, 0)
+  );
+  if (panelWidth <= 0) {
+    panelWidth = Math.min(maxPanelWidth, width > 0 ? width : maxPanelWidth);
+  }
+
+  const heightCap = isWeb ? 580 : 620;
+  const adaptiveLimit = Math.round(height * (isWeb ? 0.92 : 0.88));
+  const availableHeight = Math.max(height - overlayPadding * 2, 0);
+  const limitedHeight = Math.min(
+    heightCap,
+    adaptiveLimit,
+    availableHeight > 0 ? availableHeight : heightCap
+  );
+  const minHeight = availableHeight > 0 ? Math.min(availableHeight, 360) : 360;
+  const panelMaxHeight =
+    availableHeight > 0
+      ? Math.max(limitedHeight, minHeight)
+      : Math.min(heightCap, Math.max(adaptiveLimit, 360));
+  const reservedHeight = panelPadding * 2 + 140;
+  const contentMaxHeight = Math.min(
+    panelMaxHeight - panelPadding * 2,
+    Math.max(panelMaxHeight - reservedHeight, 220)
+  );
 
   return StyleSheet.create({
     overlay: {
@@ -475,11 +513,15 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       backgroundColor: "rgba(0,0,0,0.45)",
     },
     panelWrapper: {
-      width: "100%",
-      maxWidth: isWeb ? 520 : 560,
+      width: panelWidth,
+      maxWidth: maxPanelWidth,
+      maxHeight: panelMaxHeight,
       alignSelf: "center",
+      flexShrink: 1,
     },
     panel: {
+      width: "100%",
+      maxHeight: panelMaxHeight,
       borderRadius: 28,
       backgroundColor: colors.formBackground,
       padding: panelPadding,
@@ -488,6 +530,7 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       shadowRadius: 28,
       shadowOffset: { width: 0, height: 16 },
       elevation: 16,
+      flexShrink: 1,
     },
     headerRow: {
       flexDirection: "row",
@@ -527,8 +570,11 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
     },
     content: {
       marginTop: 4,
-      maxHeight: Platform.OS === "android" ? 620 : isWeb ? 420 : undefined,
+      maxHeight:
+        Platform.OS === "android" ? 620 : isWeb ? 420 : contentMaxHeight,
       paddingRight: isWeb ? 6 : 0,
+      flexGrow: 0,
+      flexShrink: 1,
     },
     contentInner: {
       paddingBottom: 12,

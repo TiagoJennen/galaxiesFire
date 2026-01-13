@@ -1,4 +1,4 @@
-// Modal voor hoofdtaakcreatie met samenvattende badges en confirm-knop.
+// Modal voor hoofdtaakcreatie met samenvattende badges en iOS-picker overlays.
 import React, { useMemo } from "react";
 import {
   Modal,
@@ -9,6 +9,9 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import TaskCreator, { TaskPriority } from "./TaskCreator";
 import SummaryBadge from "./SummaryBadge";
 import type { ThemeColors } from "../theme";
@@ -29,16 +32,22 @@ export type TaskCreatorModalProps = {
   onOpenLocation: () => void;
   onAdd: () => void;
   placeholder: string;
-  deadlinePreview: string;
-  locationPreview: string;
   locationAccessibility: {
     label: string;
     hint: string;
   };
+  deadlinePreview: string;
+  locationPreview: string;
   onClose: () => void;
+  iosPicker?: null | {
+    mode: "date" | "time";
+    value: Date | null;
+    onChange: (event: DateTimePickerEvent, date?: Date) => void;
+    onConfirm: () => void;
+    onCancel: () => void;
+  };
 };
 
-// Modal voor nieuwe hoofdtaak die dezelfde editor gebruikt als de inline variant.
 const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
   visible,
   colors,
@@ -54,37 +63,48 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
   onOpenLocation,
   onAdd,
   placeholder,
+  locationAccessibility,
   deadlinePreview,
   locationPreview,
-  locationAccessibility,
   onClose,
+  iosPicker = null,
 }) => {
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
-  const title = language === "nl" ? "Nieuwe hoofdtaak" : "New main task";
+  const trimmedDeadline = deadlinePreview.trim();
+  const trimmedLocation = locationPreview.trim();
+  const badgeEmpty = language === "nl" ? "Niet ingesteld" : "Not set";
+  const deadlineLabel = language === "nl" ? "Deadline" : "Deadline";
+  const locationLabel = language === "nl" ? "Locatie" : "Location";
+  const deadlineValue = trimmedDeadline.length ? trimmedDeadline : badgeEmpty;
+  const locationValue = trimmedLocation.length ? trimmedLocation : badgeEmpty;
+  const deadlineEmpty = trimmedDeadline.length === 0;
+  const locationEmpty = trimmedLocation.length === 0;
+  const title = language === "nl" ? "Nieuwe taak" : "New task";
   const closeLabel = language === "nl" ? "Sluiten" : "Close";
   const closeHint =
     language === "nl"
-      ? "Sluit het formulier zonder een taak op te slaan."
-      : "Close the form without saving a task.";
+      ? "Sluit het formulier voor een nieuwe taak."
+      : "Close the new task form.";
   const submitLabel = language === "nl" ? "Toevoegen" : "Add";
   const submitHint =
     language === "nl"
-      ? "Voeg de nieuwe hoofdtaak toe met de huidige instellingen."
-      : "Add the new main task with the current settings.";
-  const deadlineLabel = language === "nl" ? "Deadline" : "Deadline";
-  const locationLabel = language === "nl" ? "Locatie" : "Location";
-  const badgeEmpty = language === "nl" ? "Niet ingesteld" : "Not set";
-  const deadlineValue = deadlinePreview || badgeEmpty;
-  const locationValue = locationPreview || badgeEmpty;
-  const deadlineEmpty = deadlinePreview.trim().length === 0;
-  const locationEmpty = locationPreview.trim().length === 0;
+      ? "Voeg de nieuwe taak toe met de huidige instellingen."
+      : "Add the new task with the current settings.";
+  const shouldRenderPrimaryModal = visible;
+  const showIOSPicker = Platform.OS === "ios" && iosPicker;
+  const pickerDoneLabel = language === "nl" ? "Gereed" : "Done";
 
-  // Overzichtsbadges vatten gekozen deadline en locatie samen voordat de gebruiker bevestigt.
+  if (!shouldRenderPrimaryModal) {
+    return null;
+  }
+
   return (
     <Modal
       transparent
       animationType="fade"
-      visible={visible}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      visible={shouldRenderPrimaryModal}
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
@@ -169,6 +189,39 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
             </View>
           </View>
         </View>
+
+        {showIOSPicker ? (
+          <View style={styles.pickerOverlay} pointerEvents="box-none">
+            <Pressable
+              accessibilityRole="button"
+              onPress={iosPicker.onCancel}
+              style={styles.pickerBackdrop}
+            />
+            <View style={styles.pickerSheetWrapper} pointerEvents="box-none">
+              <View style={styles.pickerSheet} pointerEvents="auto">
+                <DateTimePicker
+                  value={iosPicker.value ?? new Date()}
+                  mode={iosPicker.mode}
+                  display="spinner"
+                  onChange={iosPicker.onChange}
+                  style={styles.picker}
+                  textColor={colors.text}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={pickerDoneLabel}
+                  onPress={iosPicker.onConfirm}
+                  style={({ pressed }) => [
+                    styles.pickerDoneButton,
+                    pressed && styles.pickerDoneButtonPressed,
+                  ]}
+                >
+                  <Text style={styles.pickerDoneLabel}>{pickerDoneLabel}</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        ) : null}
       </View>
     </Modal>
   );
@@ -270,6 +323,59 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       fontWeight: "700",
       color: "#FFFFFF",
       letterSpacing: 0.3,
+    },
+    pickerOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: "flex-end",
+      zIndex: 20,
+    },
+    pickerBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.45)",
+    },
+    pickerSheetWrapper: {
+      padding: 16,
+      width: "100%",
+      alignItems: "center",
+    },
+    pickerSheet: {
+      width: "100%",
+      maxWidth: isWeb ? 540 : 520,
+      borderRadius: 24,
+      backgroundColor: colors.formBackground,
+      paddingTop: 16,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      shadowColor: "#000",
+      shadowOpacity: isLight ? 0.2 : 0.4,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 12 },
+      elevation: 16,
+    },
+    picker: {
+      width: "100%",
+      height: 220,
+    },
+    pickerDoneButton: {
+      marginTop: 12,
+      alignSelf: "flex-end",
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+      borderRadius: 14,
+      backgroundColor: colors.addButton,
+      shadowColor: colors.addButton,
+      shadowOpacity: isLight ? 0.2 : 0.3,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 6,
+    },
+    pickerDoneButtonPressed: {
+      opacity: 0.85,
+    },
+    pickerDoneLabel: {
+      color: "#FFFFFF",
+      fontSize: 15,
+      fontWeight: "600",
     },
   });
 };

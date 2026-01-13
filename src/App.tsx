@@ -88,28 +88,6 @@ export default function App() {
 
   if (loading) return null;
 
-  const InsideScreen: React.FC<
-    NativeStackScreenProps<RootStackParamList, "Inside">
-  > = () => (
-    <InsideLayout
-      theme={theme}
-      toggleTheme={toggleTheme}
-      language={language}
-      toggleLanguage={toggleLanguage}
-    />
-  );
-
-  const LoginScreen: React.FC<
-    NativeStackScreenProps<RootStackParamList, "Login">
-  > = () => (
-    <Login
-      theme={theme}
-      toggleTheme={toggleTheme}
-      language={language}
-      toggleLanguage={toggleLanguage}
-    />
-  );
-
   return (
     <>
       <StatusBar style={theme === "light" ? "dark" : "light"} hidden={false} />
@@ -126,14 +104,28 @@ export default function App() {
               user ? (
                 <Stack.Screen
                   name="Inside"
-                  component={InsideScreen}
                   options={{ headerShown: false }}
+                  children={() => (
+                    <InsideLayout
+                      theme={theme}
+                      toggleTheme={toggleTheme}
+                      language={language}
+                      toggleLanguage={toggleLanguage}
+                    />
+                  )}
                 />
               ) : (
                 <Stack.Screen
                   name="Login"
-                  component={LoginScreen}
                   options={{ headerShown: false }}
+                  children={() => (
+                    <Login
+                      theme={theme}
+                      toggleTheme={toggleTheme}
+                      language={language}
+                      toggleLanguage={toggleLanguage}
+                    />
+                  )}
                 />
               )
             }

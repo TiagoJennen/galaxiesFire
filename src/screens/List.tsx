@@ -17,6 +17,7 @@ import {
   Pressable,
   ToastAndroid,
   StyleSheet,
+  Keyboard,
 } from "react-native";
 import DateTimePicker, {
   DateTimePickerEvent,
@@ -107,6 +108,7 @@ const List: React.FC<ListScreenProps> = ({
   toggleLanguage,
 }) => {
   const navigation = useNavigation<any>();
+  const isIOS = Platform.OS === "ios";
   const [task, setTask] = useState("");
   const [todos, setTodos] = useState<Todo[]>([]);
   const [archivedTodos, setArchivedTodos] = useState<Todo[]>([]);
@@ -239,6 +241,8 @@ const List: React.FC<ListScreenProps> = ({
   const closeTaskCreatorModal = useCallback(() => {
     setTaskCreatorVisible(false);
     setShouldFocusTaskInput(false);
+    setShowDatePicker(false);
+    setShowTimePicker(false);
   }, []);
 
   const resetSubtaskDraft = useCallback(() => {
@@ -255,6 +259,8 @@ const List: React.FC<ListScreenProps> = ({
     setSubtaskCreatorParentIndex(null);
     setSubtaskCreatorSource("active");
     resetSubtaskDraft();
+    setShowSubtaskDatePicker(false);
+    setShowSubtaskTimePicker(false);
   }, [resetSubtaskDraft]);
 
   // Web krijgt een maatwerkconfirm zodat we geen standaard browser-pop-up hoeven te tonen.
@@ -307,6 +313,10 @@ const List: React.FC<ListScreenProps> = ({
   );
   const floatingAddStyles = useMemo(
     () => createFloatingAddButtonStyles(colors, theme),
+    [colors, theme]
+  );
+  const iosPickerStyles = useMemo(
+    () => createIOSPickerStyles(colors, theme),
     [colors, theme]
   );
   const strings = useMemo(() => translations[language], [language]);
@@ -1194,6 +1204,8 @@ const List: React.FC<ListScreenProps> = ({
   const handleHeaderAddTask = useCallback(() => {
     setTaskCreatorTarget(showArchive ? "archive" : "active");
     setTaskCreatorVisible(true);
+    setShowDatePicker(false);
+    setShowTimePicker(false);
     setShouldFocusTaskInput(true);
   }, [showArchive]);
 
@@ -1321,22 +1333,26 @@ const List: React.FC<ListScreenProps> = ({
   };
 
   const openTaskEditorDate = () => {
+    Keyboard.dismiss();
     if (Platform.OS === "web") {
       openWebPicker("date", taskEditorDate, (value) =>
         setTaskEditorDate(value)
       );
       return;
     }
+    setShowTaskEditorTimePicker(false);
     setShowTaskEditorDatePicker(true);
   };
 
   const openTaskEditorTime = () => {
+    Keyboard.dismiss();
     if (Platform.OS === "web") {
       openWebPicker("time", taskEditorTime, (value) =>
         setTaskEditorTime(value)
       );
       return;
     }
+    setShowTaskEditorDatePicker(false);
     setShowTaskEditorTimePicker(true);
   };
 
@@ -1349,18 +1365,28 @@ const List: React.FC<ListScreenProps> = ({
     event: DateTimePickerEvent,
     date?: Date
   ) => {
-    setShowTaskEditorDatePicker(false);
-    if (event.type === "dismissed") return;
+    if (event.type === "dismissed") {
+      setShowTaskEditorDatePicker(false);
+      return;
+    }
     if (date) setTaskEditorDate(date);
+    if (Platform.OS === "android") {
+      setShowTaskEditorDatePicker(false);
+    }
   };
 
   const handleTaskEditorTimeChange = (
     event: DateTimePickerEvent,
     time?: Date
   ) => {
-    setShowTaskEditorTimePicker(false);
-    if (event.type === "dismissed") return;
+    if (event.type === "dismissed") {
+      setShowTaskEditorTimePicker(false);
+      return;
+    }
     if (time) setTaskEditorTime(time);
+    if (Platform.OS === "android") {
+      setShowTaskEditorTimePicker(false);
+    }
   };
 
   const clearTodoImage = (index: number, source: ListSource = "active") => {
@@ -1509,22 +1535,26 @@ const List: React.FC<ListScreenProps> = ({
   };
 
   const openSubtaskEditorDate = () => {
+    Keyboard.dismiss();
     if (Platform.OS === "web") {
       openWebPicker("date", subtaskEditorDate, (value) =>
         setSubtaskEditorDate(value)
       );
       return;
     }
+    setShowSubtaskEditorTimePicker(false);
     setShowSubtaskEditorDatePicker(true);
   };
 
   const openSubtaskEditorTime = () => {
+    Keyboard.dismiss();
     if (Platform.OS === "web") {
       openWebPicker("time", subtaskEditorTime, (value) =>
         setSubtaskEditorTime(value)
       );
       return;
     }
+    setShowSubtaskEditorDatePicker(false);
     setShowSubtaskEditorTimePicker(true);
   };
 
@@ -1537,18 +1567,28 @@ const List: React.FC<ListScreenProps> = ({
     event: DateTimePickerEvent,
     date?: Date
   ) => {
-    setShowSubtaskEditorDatePicker(false);
-    if (event.type === "dismissed") return;
+    if (event.type === "dismissed") {
+      setShowSubtaskEditorDatePicker(false);
+      return;
+    }
     if (date) setSubtaskEditorDate(date);
+    if (Platform.OS === "android") {
+      setShowSubtaskEditorDatePicker(false);
+    }
   };
 
   const handleSubtaskEditorTimeChange = (
     event: DateTimePickerEvent,
     time?: Date
   ) => {
-    setShowSubtaskEditorTimePicker(false);
-    if (event.type === "dismissed") return;
+    if (event.type === "dismissed") {
+      setShowSubtaskEditorTimePicker(false);
+      return;
+    }
     if (time) setSubtaskEditorTime(time);
+    if (Platform.OS === "android") {
+      setShowSubtaskEditorTimePicker(false);
+    }
   };
 
   const clearSubtaskEditorImage = () => {
@@ -1986,36 +2026,300 @@ const List: React.FC<ListScreenProps> = ({
 
   // Open date/time pickers: web gebruikt modal, native DateTimePicker
   const openTaskDate = () => {
+    Keyboard.dismiss();
+    if (__DEV__) {
+      console.log("[picker] openTaskDate");
+    }
     if (Platform.OS === "web") {
       openWebPicker("date", selectedDate, (value) => setSelectedDate(value));
       return;
     }
+    setShowTimePicker(false);
     setShowDatePicker(true);
   };
 
   const openTaskTime = () => {
+    Keyboard.dismiss();
+    if (__DEV__) {
+      console.log("[picker] openTaskTime");
+    }
     if (Platform.OS === "web") {
       openWebPicker("time", selectedTime, (value) => setSelectedTime(value));
       return;
     }
+    setShowDatePicker(false);
     setShowTimePicker(true);
   };
 
   const openSubtaskDate = () => {
+    Keyboard.dismiss();
+    if (__DEV__) {
+      console.log("[picker] openSubtaskDate");
+    }
     if (Platform.OS === "web") {
       openWebPicker("date", subtaskDate, (value) => setSubtaskDate(value));
       return;
     }
+    setShowSubtaskTimePicker(false);
     setShowSubtaskDatePicker(true);
   };
 
   const openSubtaskTime = () => {
+    Keyboard.dismiss();
+    if (__DEV__) {
+      console.log("[picker] openSubtaskTime");
+    }
     if (Platform.OS === "web") {
       openWebPicker("time", subtaskTime, (value) => setSubtaskTime(value));
       return;
     }
+    setShowSubtaskDatePicker(false);
     setShowSubtaskTimePicker(true);
   };
+
+  const closeTaskCreatorDatePicker = useCallback(() => {
+    setShowDatePicker(false);
+  }, []);
+
+  const closeTaskCreatorTimePicker = useCallback(() => {
+    setShowTimePicker(false);
+  }, []);
+
+  const closeSubtaskCreatorDatePicker = useCallback(() => {
+    setShowSubtaskDatePicker(false);
+  }, []);
+
+  const closeSubtaskCreatorTimePicker = useCallback(() => {
+    setShowSubtaskTimePicker(false);
+  }, []);
+
+  const closeTaskEditorDatePicker = useCallback(() => {
+    setShowTaskEditorDatePicker(false);
+  }, []);
+
+  const closeTaskEditorTimePicker = useCallback(() => {
+    setShowTaskEditorTimePicker(false);
+  }, []);
+
+  const closeSubtaskEditorDatePicker = useCallback(() => {
+    setShowSubtaskEditorDatePicker(false);
+  }, []);
+
+  const closeSubtaskEditorTimePicker = useCallback(() => {
+    setShowSubtaskEditorTimePicker(false);
+  }, []);
+
+  const confirmTaskCreatorDatePicker = useCallback(() => {
+    setSelectedDate((current) => {
+      if (current) return current;
+      const fallback = new Date();
+      fallback.setHours(0, 0, 0, 0);
+      return fallback;
+    });
+    closeTaskCreatorDatePicker();
+  }, [closeTaskCreatorDatePicker]);
+
+  const confirmTaskCreatorTimePicker = useCallback(() => {
+    setSelectedTime((current) => {
+      if (current) return current;
+      const fallback = new Date();
+      fallback.setSeconds(0, 0);
+      return fallback;
+    });
+    closeTaskCreatorTimePicker();
+  }, [closeTaskCreatorTimePicker]);
+
+  const confirmSubtaskCreatorDatePicker = useCallback(() => {
+    setSubtaskDate((current) => {
+      if (current) return current;
+      const fallback = new Date();
+      fallback.setHours(0, 0, 0, 0);
+      return fallback;
+    });
+    closeSubtaskCreatorDatePicker();
+  }, [closeSubtaskCreatorDatePicker]);
+
+  const confirmSubtaskCreatorTimePicker = useCallback(() => {
+    setSubtaskTime((current) => {
+      if (current) return current;
+      const fallback = new Date();
+      fallback.setSeconds(0, 0);
+      return fallback;
+    });
+    closeSubtaskCreatorTimePicker();
+  }, [closeSubtaskCreatorTimePicker]);
+
+  const confirmTaskEditorDatePicker = useCallback(() => {
+    setTaskEditorDate((current) => {
+      if (current) return current;
+      const fallback = new Date();
+      fallback.setHours(0, 0, 0, 0);
+      return fallback;
+    });
+    closeTaskEditorDatePicker();
+  }, [closeTaskEditorDatePicker]);
+
+  const confirmTaskEditorTimePicker = useCallback(() => {
+    setTaskEditorTime((current) => {
+      if (current) return current;
+      const fallback = new Date();
+      fallback.setSeconds(0, 0);
+      return fallback;
+    });
+    closeTaskEditorTimePicker();
+  }, [closeTaskEditorTimePicker]);
+
+  const confirmSubtaskEditorDatePicker = useCallback(() => {
+    setSubtaskEditorDate((current) => {
+      if (current) return current;
+      const fallback = new Date();
+      fallback.setHours(0, 0, 0, 0);
+      return fallback;
+    });
+    closeSubtaskEditorDatePicker();
+  }, [closeSubtaskEditorDatePicker]);
+
+  const confirmSubtaskEditorTimePicker = useCallback(() => {
+    setSubtaskEditorTime((current) => {
+      if (current) return current;
+      const fallback = new Date();
+      fallback.setSeconds(0, 0);
+      return fallback;
+    });
+    closeSubtaskEditorTimePicker();
+  }, [closeSubtaskEditorTimePicker]);
+
+  const iosPickerDoneLabel = language === "nl" ? "Gereed" : "Done";
+
+  const renderIOSPicker = (
+    visible: boolean,
+    mode: "date" | "time",
+    value: Date | null,
+    onChange: (event: DateTimePickerEvent, date?: Date) => void,
+    onConfirm: () => void,
+    onCancel: () => void
+  ) => {
+    if (!isIOS || !visible) return null;
+    if (__DEV__) {
+      console.log("[picker] renderIOSPicker", mode, visible);
+    }
+    return (
+      <Modal
+        transparent
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
+        supportedOrientations={["portrait", "landscape"]}
+        visible={visible}
+        onRequestClose={onCancel}
+      >
+        <View style={iosPickerStyles.modalRoot}>
+          <Pressable style={iosPickerStyles.backdrop} onPress={onCancel} />
+          <View style={iosPickerStyles.sheetWrapper}>
+            <View style={iosPickerStyles.sheet}>
+              <DateTimePicker
+                value={value ?? new Date()}
+                mode={mode}
+                display="spinner"
+                onChange={onChange}
+                style={iosPickerStyles.picker}
+                textColor={colors.text}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={iosPickerDoneLabel}
+                onPress={onConfirm}
+                style={({ pressed }) => [
+                  iosPickerStyles.doneButton,
+                  pressed && iosPickerStyles.doneButtonPressed,
+                ]}
+              >
+                <Text style={iosPickerStyles.doneButtonLabel}>
+                  {iosPickerDoneLabel}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  const handleTaskCreatorTimeChange = (
+    event: DateTimePickerEvent,
+    time?: Date
+  ) => {
+    if (event.type === "dismissed") {
+      setShowTimePicker(false);
+      return;
+    }
+    if (time) setSelectedTime(time);
+    if (Platform.OS === "android") {
+      setShowTimePicker(false);
+    }
+  };
+
+  const handleTaskCreatorDateChange = (
+    event: DateTimePickerEvent,
+    date?: Date
+  ) => {
+    if (event.type === "dismissed") {
+      setShowDatePicker(false);
+      return;
+    }
+    if (date) setSelectedDate(date);
+    if (Platform.OS === "android") {
+      setShowDatePicker(false);
+    }
+  };
+
+  const handleSubtaskCreatorDateChange = (
+    event: DateTimePickerEvent,
+    date?: Date
+  ) => {
+    if (event.type === "dismissed") {
+      setShowSubtaskDatePicker(false);
+      return;
+    }
+    if (date) setSubtaskDate(date);
+    if (Platform.OS === "android") {
+      setShowSubtaskDatePicker(false);
+    }
+  };
+
+  const handleSubtaskCreatorTimeChange = (
+    event: DateTimePickerEvent,
+    time?: Date
+  ) => {
+    if (event.type === "dismissed") {
+      setShowSubtaskTimePicker(false);
+      return;
+    }
+    if (time) setSubtaskTime(time);
+    if (Platform.OS === "android") {
+      setShowSubtaskTimePicker(false);
+    }
+  };
+
+  const taskCreatorIOSPicker = isIOS
+    ? showDatePicker
+      ? {
+          mode: "date" as const,
+          value: selectedDate,
+          onChange: handleTaskCreatorDateChange,
+          onConfirm: confirmTaskCreatorDatePicker,
+          onCancel: closeTaskCreatorDatePicker,
+        }
+      : showTimePicker
+        ? {
+            mode: "time" as const,
+            value: selectedTime,
+            onChange: handleTaskCreatorTimeChange,
+            onConfirm: confirmTaskCreatorTimePicker,
+            onCancel: closeTaskCreatorTimePicker,
+          }
+        : null
+    : null;
 
   // Bereid de locatiemodal voor: seed met bestaande waarden en vraag permissies indien nodig.
   const openLocationPicker = useCallback(
@@ -3317,56 +3621,112 @@ const List: React.FC<ListScreenProps> = ({
               : "Open the map to choose a location.",
         }}
         onClose={closeTaskCreatorModal}
+        iosPicker={taskCreatorIOSPicker}
       />
+
+      {!taskCreatorIOSPicker &&
+        renderIOSPicker(
+          showDatePicker,
+          "date",
+          selectedDate,
+          handleTaskCreatorDateChange,
+          confirmTaskCreatorDatePicker,
+          closeTaskCreatorDatePicker
+        )}
+      {!taskCreatorIOSPicker &&
+        renderIOSPicker(
+          showTimePicker,
+          "time",
+          selectedTime,
+          handleTaskCreatorTimeChange,
+          confirmTaskCreatorTimePicker,
+          closeTaskCreatorTimePicker
+        )}
+      {renderIOSPicker(
+        showSubtaskDatePicker,
+        "date",
+        subtaskDate,
+        handleSubtaskCreatorDateChange,
+        confirmSubtaskCreatorDatePicker,
+        closeSubtaskCreatorDatePicker
+      )}
+      {renderIOSPicker(
+        showSubtaskTimePicker,
+        "time",
+        subtaskTime,
+        handleSubtaskCreatorTimeChange,
+        confirmSubtaskCreatorTimePicker,
+        closeSubtaskCreatorTimePicker
+      )}
+      {renderIOSPicker(
+        showTaskEditorDatePicker,
+        "date",
+        taskEditorDate,
+        handleTaskEditorDateChange,
+        confirmTaskEditorDatePicker,
+        closeTaskEditorDatePicker
+      )}
+      {renderIOSPicker(
+        showTaskEditorTimePicker,
+        "time",
+        taskEditorTime,
+        handleTaskEditorTimeChange,
+        confirmTaskEditorTimePicker,
+        closeTaskEditorTimePicker
+      )}
+      {renderIOSPicker(
+        showSubtaskEditorDatePicker,
+        "date",
+        subtaskEditorDate,
+        handleSubtaskEditorDateChange,
+        confirmSubtaskEditorDatePicker,
+        closeSubtaskEditorDatePicker
+      )}
+      {renderIOSPicker(
+        showSubtaskEditorTimePicker,
+        "time",
+        subtaskEditorTime,
+        handleSubtaskEditorTimeChange,
+        confirmSubtaskEditorTimePicker,
+        closeSubtaskEditorTimePicker
+      )}
 
       {/* Als we het hoofd taken scherm tonen */}
       {!showArchive ? (
         <>
-          {showTimePicker && Platform.OS !== "web" && (
+          {showTimePicker && Platform.OS === "android" && (
             <DateTimePicker
               value={selectedTime || new Date()}
               mode="time"
               display="default"
-              onChange={(_event: DateTimePickerEvent, time?: Date) => {
-                setShowTimePicker(false);
-                if (time) setSelectedTime(time);
-              }}
+              onChange={handleTaskCreatorTimeChange}
             />
           )}
           {/* Native datepicker */}
-          {showDatePicker && Platform.OS !== "web" && (
+          {showDatePicker && Platform.OS === "android" && (
             <DateTimePicker
               value={selectedDate || new Date()}
               mode="date"
               display="default"
-              onChange={(_event: DateTimePickerEvent, date?: Date) => {
-                setShowDatePicker(false);
-                if (date) setSelectedDate(date);
-              }}
+              onChange={handleTaskCreatorDateChange}
             />
           )}
 
-          {showSubtaskDatePicker && Platform.OS !== "web" && (
+          {showSubtaskDatePicker && Platform.OS === "android" && (
             <DateTimePicker
               value={subtaskDate || new Date()}
               mode="date"
               display="default"
-              onChange={(_event: DateTimePickerEvent, date?: Date) => {
-                setShowSubtaskDatePicker(false);
-                if (date) setSubtaskDate(date);
-              }}
+              onChange={handleSubtaskCreatorDateChange}
             />
           )}
 
-          {showSubtaskTimePicker && Platform.OS !== "web" && (
+          {showSubtaskTimePicker && Platform.OS === "android" && (
             <DateTimePicker
               value={subtaskTime || new Date()}
               mode="time"
               display="default"
-              onChange={(_event: DateTimePickerEvent, time?: Date) => {
-                setShowSubtaskTimePicker(false);
-                if (time) setSubtaskTime(time);
-              }}
+              onChange={handleSubtaskCreatorTimeChange}
             />
           )}
 
@@ -3395,51 +3755,39 @@ const List: React.FC<ListScreenProps> = ({
         </>
       ) : (
         <>
-          {showTimePicker && Platform.OS !== "web" && (
+          {showTimePicker && Platform.OS === "android" && (
             <DateTimePicker
               value={selectedTime || new Date()}
               mode="time"
               display="default"
-              onChange={(_event: DateTimePickerEvent, time?: Date) => {
-                setShowTimePicker(false);
-                if (time) setSelectedTime(time);
-              }}
+              onChange={handleTaskCreatorTimeChange}
             />
           )}
 
-          {showDatePicker && Platform.OS !== "web" && (
+          {showDatePicker && Platform.OS === "android" && (
             <DateTimePicker
               value={selectedDate || new Date()}
               mode="date"
               display="default"
-              onChange={(_event: DateTimePickerEvent, date?: Date) => {
-                setShowDatePicker(false);
-                if (date) setSelectedDate(date);
-              }}
+              onChange={handleTaskCreatorDateChange}
             />
           )}
 
-          {showSubtaskDatePicker && Platform.OS !== "web" && (
+          {showSubtaskDatePicker && Platform.OS === "android" && (
             <DateTimePicker
               value={subtaskDate || new Date()}
               mode="date"
               display="default"
-              onChange={(_event: DateTimePickerEvent, date?: Date) => {
-                setShowSubtaskDatePicker(false);
-                if (date) setSubtaskDate(date);
-              }}
+              onChange={handleSubtaskCreatorDateChange}
             />
           )}
 
-          {showSubtaskTimePicker && Platform.OS !== "web" && (
+          {showSubtaskTimePicker && Platform.OS === "android" && (
             <DateTimePicker
               value={subtaskTime || new Date()}
               mode="time"
               display="default"
-              onChange={(_event: DateTimePickerEvent, time?: Date) => {
-                setShowSubtaskTimePicker(false);
-                if (time) setSubtaskTime(time);
-              }}
+              onChange={handleSubtaskCreatorTimeChange}
             />
           )}
 
@@ -3638,6 +3986,68 @@ const createWebToastStyles = (colors: ThemeColors, theme: "light" | "dark") => {
     error: {
       borderColor: palette.error,
       shadowColor: palette.error,
+    },
+  });
+};
+
+const createIOSPickerStyles = (
+  colors: ThemeColors,
+  theme: "light" | "dark"
+) => {
+  const isLight = theme === "light";
+
+  return StyleSheet.create({
+    modalRoot: {
+      flex: 1,
+      justifyContent: "flex-end",
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.45)",
+    },
+    sheetWrapper: {
+      padding: 16,
+      width: "100%",
+      alignItems: "center",
+    },
+    sheet: {
+      width: "100%",
+      maxWidth: 540,
+      borderRadius: 24,
+      backgroundColor: colors.formBackground,
+      paddingTop: 16,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      shadowColor: "#000",
+      shadowOpacity: isLight ? 0.2 : 0.4,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 12 },
+      elevation: 16,
+    },
+    picker: {
+      width: "100%",
+      height: 220,
+    },
+    doneButton: {
+      marginTop: 12,
+      alignSelf: "flex-end",
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+      borderRadius: 14,
+      backgroundColor: colors.addButton,
+      shadowColor: colors.addButton,
+      shadowOpacity: isLight ? 0.2 : 0.3,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 6,
+    },
+    doneButtonPressed: {
+      opacity: 0.85,
+    },
+    doneButtonLabel: {
+      color: "#FFFFFF",
+      fontSize: 15,
+      fontWeight: "600",
     },
   });
 };
