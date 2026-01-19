@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { ThemeColors } from "../theme";
+import InlineSubtaskEditor from "./InlineSubtaskEditor";
 
 // Prioriteitstype voor een taak
 export type TaskPriority = "low" | "medium" | "high";
@@ -66,6 +67,31 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   const addScale = useRef(new Animated.Value(1)).current;
 
+  if (!showInlineAdd) {
+    return (
+      <InlineSubtaskEditor
+        text={taskText}
+        onChangeText={onChangeTask}
+        priority={priority}
+        onSelectPriority={onSelectPriority}
+        onOpenDate={onOpenDate}
+        onOpenTime={onOpenTime}
+        onOpenLocation={onOpenLocation}
+        onAdd={onAdd}
+        colors={colors}
+        theme={theme}
+        placeholder={placeholder}
+        accessibilityLabels={{
+          locationLabel: locationAccessibility.label,
+          locationHint: locationAccessibility.hint,
+        }}
+        showInlineAdd={false}
+        variant="modal"
+        inputRef={inputRef}
+      />
+    );
+  }
+
   // Zorgt voor een subtiele verkleining wanneer de gebruiker de plusknop indrukt.
   const handleAddPressIn = () => {
     Animated.spring(addScale, {
@@ -103,7 +129,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
         pressed && styles.actionIconPressed,
       ]}
     >
-      <Ionicons name={icon} size={18} color={styles.iconTint.color} />
+      <Ionicons name={icon} size={16} color={styles.iconTint.color} />
     </Pressable>
   );
 
@@ -225,7 +251,7 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
     controlsRow: {
       marginTop: 18,
       flexDirection: "row",
-      alignItems: isWeb ? "center" : "flex-start",
+      alignItems: "center",
       flexWrap: isWeb ? "nowrap" : "wrap",
       rowGap: 12,
     },
@@ -234,14 +260,16 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       flexWrap: "wrap",
       flexGrow: 0,
       flexShrink: 0,
-      marginRight: 16,
-      marginBottom: isWeb ? 0 : 12,
+      marginBottom: 12,
+      marginRight: 12,
     },
     priorityChip: {
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderRadius: 14,
-      marginRight: 8,
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      marginRight: 6,
+      alignItems: "center",
+      justifyContent: "center",
       backgroundColor: isLight ? "#E1E6F0" : "#1F2734",
       shadowColor: "#000",
       shadowOpacity: 0.1,
@@ -253,7 +281,7 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       transform: [{ scale: 0.96 }],
     },
     priorityLabel: {
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: "700",
       letterSpacing: 0.4,
       color: isLight ? "#5C6474" : "#A7B0C2",
@@ -265,14 +293,14 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       flexDirection: "row",
       alignItems: "center",
       flexShrink: 0,
-      marginRight: 12,
-      marginBottom: isWeb ? 0 : 12,
       marginLeft: "auto",
+      marginRight: 12,
+      marginBottom: 0,
     },
     actionIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
+      width: 32,
+      height: 32,
+      borderRadius: 8,
       backgroundColor: isLight ? "#E6ECF7" : "#1F2734",
       alignItems: "center",
       justifyContent: "center",

@@ -139,9 +139,9 @@ const List: React.FC<ListScreenProps> = ({
     null
   );
   const [sortOrder, setSortOrder] = useState<"oldest" | "newest">("oldest");
-  const [prioritySort, setPrioritySort] = useState<"highToLow" | "lowToHigh">(
-    "highToLow"
-  );
+  const [prioritySort, setPrioritySort] = useState<
+    "highToLow" | "lowToHigh" | null
+  >(null);
   const [selectedDay, setSelectedDay] = useState(() => {
     const initial = new Date(lastSelectedDayTimestamp);
     initial.setHours(0, 0, 0, 0);
@@ -415,22 +415,32 @@ const List: React.FC<ListScreenProps> = ({
     setSortOrder((current) => (current === "oldest" ? "newest" : "oldest"));
   }, []);
   const togglePrioritySort = useCallback(() => {
-    setPrioritySort((current) =>
-      current === "highToLow" ? "lowToHigh" : "highToLow"
-    );
+    setPrioritySort((current) => {
+      if (current === null) return "highToLow";
+      if (current === "highToLow") return "lowToHigh";
+      return null;
+    });
   }, []);
 
-  // Scroll newest-first list to the top whenever the order toggles or view switches.
+  // Zorg dat de lijst zichtbare items altijd vanaf de top toont na sorteerwijzigingen.
   useEffect(() => {
-    // Reset scrollpositie zodra we sorteren op "nieuwste" zodat de laatste items bovenaan staan.
-    if (sortOrder !== "newest") {
-      return;
-    }
     const targetRef = showArchive
       ? archivedListRef.current
       : activeListRef.current;
-    targetRef?.scrollToOffset({ offset: 0, animated: false });
-  }, [sortOrder, showArchive]);
+    if (!targetRef) {
+      return;
+    }
+    const resetScroll = () => {
+      targetRef.scrollToOffset({ offset: 0, animated: false });
+    };
+    resetScroll();
+    const frame = requestAnimationFrame(resetScroll);
+    const timeout = setTimeout(resetScroll, 48);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timeout);
+    };
+  }, [sortOrder, prioritySort, showArchive]);
 
   useEffect(() => {
     // Registreer web toast listeners zodat het scherm eigen meldingen kan renderen.
@@ -633,13 +643,15 @@ const List: React.FC<ListScreenProps> = ({
         .map((item, originalIndex) => ({ item, originalIndex }))
         .filter(({ item }) => shouldIncludeTodo(item))
         .sort((a, b) => {
-          const priorityDiff =
-            prioritySort === "highToLow"
-              ? priorityRank(b.item.priority ?? null) -
-                priorityRank(a.item.priority ?? null)
-              : priorityRank(a.item.priority ?? null) -
-                priorityRank(b.item.priority ?? null);
-          if (priorityDiff !== 0) return priorityDiff;
+          if (prioritySort) {
+            const priorityDiff =
+              prioritySort === "highToLow"
+                ? priorityRank(b.item.priority ?? null) -
+                  priorityRank(a.item.priority ?? null)
+                : priorityRank(a.item.priority ?? null) -
+                  priorityRank(b.item.priority ?? null);
+            if (priorityDiff !== 0) return priorityDiff;
+          }
 
           const aTime = a.item.createdAt
             ? new Date(a.item.createdAt).getTime()
@@ -657,13 +669,15 @@ const List: React.FC<ListScreenProps> = ({
       list
         .map((sub, originalIndex) => ({ sub, originalIndex }))
         .sort((a, b) => {
-          const priorityDiff =
-            prioritySort === "highToLow"
-              ? priorityRank(b.sub.priority ?? null) -
-                priorityRank(a.sub.priority ?? null)
-              : priorityRank(a.sub.priority ?? null) -
-                priorityRank(b.sub.priority ?? null);
-          if (priorityDiff !== 0) return priorityDiff;
+          if (prioritySort) {
+            const priorityDiff =
+              prioritySort === "highToLow"
+                ? priorityRank(b.sub.priority ?? null) -
+                  priorityRank(a.sub.priority ?? null)
+                : priorityRank(a.sub.priority ?? null) -
+                  priorityRank(b.sub.priority ?? null);
+            if (priorityDiff !== 0) return priorityDiff;
+          }
 
           const aTime = a.sub.createdAt
             ? new Date(a.sub.createdAt).getTime()
@@ -702,20 +716,35 @@ const List: React.FC<ListScreenProps> = ({
     []
   );
 
+  const dateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }),
+    [locale]
+  );
+
+  const timeFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }),
+    [locale]
+  );
+
   const formatDate = useCallback(
     (value?: string | null) => {
       if (!value) return "";
       const date = new Date(value);
-      return date.toLocaleString(locale, {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
+      const datePart = dateFormatter.format(date);
+      const timePart = timeFormatter.format(date);
+      return `${datePart}\u00A0${timePart}`;
     },
-    [locale]
+    [dateFormatter, timeFormatter]
   );
 
   useEffect(() => {
@@ -1206,7 +1235,6 @@ const List: React.FC<ListScreenProps> = ({
     setTaskCreatorVisible(true);
     setShowDatePicker(false);
     setShowTimePicker(false);
-    setShouldFocusTaskInput(true);
   }, [showArchive]);
 
   // Voeg een nieuwe taak toe met optionele deadline/tijd
@@ -2321,6 +2349,26 @@ const List: React.FC<ListScreenProps> = ({
         : null
     : null;
 
+  const subtaskCreatorIOSPicker = isIOS
+    ? showSubtaskDatePicker
+      ? {
+          mode: "date" as const,
+          value: subtaskDate,
+          onChange: handleSubtaskCreatorDateChange,
+          onConfirm: confirmSubtaskCreatorDatePicker,
+          onCancel: closeSubtaskCreatorDatePicker,
+        }
+      : showSubtaskTimePicker
+        ? {
+            mode: "time" as const,
+            value: subtaskTime,
+            onChange: handleSubtaskCreatorTimeChange,
+            onConfirm: confirmSubtaskCreatorTimePicker,
+            onCancel: closeSubtaskCreatorTimePicker,
+          }
+        : null
+    : null;
+
   // Bereid de locatiemodal voor: seed met bestaande waarden en vraag permissies indien nodig.
   const openLocationPicker = useCallback(
     async (
@@ -3131,8 +3179,10 @@ const List: React.FC<ListScreenProps> = ({
     () => ({
       editSubtask: strings.editSubtask,
       subtaskName: strings.subtaskName,
+      deadline: strings.deadline,
       clearDeadline: strings.clearDeadline,
       noDeadline: strings.noDeadline,
+      deadlineOverdue: strings.deadlineOverdue,
       addPhoto: strings.addPhoto,
       noPhoto: strings.noPhoto,
       pickFromGallery: strings.pickFromGallery,
@@ -3515,12 +3565,16 @@ const List: React.FC<ListScreenProps> = ({
       <SubtaskEditorModal
         visible={subtaskEditorVisible}
         colors={colors}
+        theme={theme}
         subtaskText={subtaskEditorText}
         onChangeText={setSubtaskEditorText}
         onOpenDate={openSubtaskEditorDate}
         onOpenTime={openSubtaskEditorTime}
         onClearDeadline={clearSubtaskEditorDeadline}
         deadlinePreview={subtaskEditorDeadlineDisplay}
+        deadlineISO={
+          subtaskEditorDeadlinePreview ?? editingSubtask?.deadline ?? null
+        }
         showDatePicker={showSubtaskEditorDatePicker}
         showTimePicker={showSubtaskEditorTimePicker}
         dateValue={subtaskEditorDate}
@@ -3566,6 +3620,7 @@ const List: React.FC<ListScreenProps> = ({
               ? "Open de kaart om een locatie voor deze subtaak te kiezen."
               : "Open the map to choose a location for this subtask.",
         }}
+        iosPicker={subtaskCreatorIOSPicker}
       />
       <TaskEditorModal
         visible={taskEditorVisible}
@@ -3642,22 +3697,24 @@ const List: React.FC<ListScreenProps> = ({
           confirmTaskCreatorTimePicker,
           closeTaskCreatorTimePicker
         )}
-      {renderIOSPicker(
-        showSubtaskDatePicker,
-        "date",
-        subtaskDate,
-        handleSubtaskCreatorDateChange,
-        confirmSubtaskCreatorDatePicker,
-        closeSubtaskCreatorDatePicker
-      )}
-      {renderIOSPicker(
-        showSubtaskTimePicker,
-        "time",
-        subtaskTime,
-        handleSubtaskCreatorTimeChange,
-        confirmSubtaskCreatorTimePicker,
-        closeSubtaskCreatorTimePicker
-      )}
+      {!subtaskCreatorIOSPicker &&
+        renderIOSPicker(
+          showSubtaskDatePicker,
+          "date",
+          subtaskDate,
+          handleSubtaskCreatorDateChange,
+          confirmSubtaskCreatorDatePicker,
+          closeSubtaskCreatorDatePicker
+        )}
+      {!subtaskCreatorIOSPicker &&
+        renderIOSPicker(
+          showSubtaskTimePicker,
+          "time",
+          subtaskTime,
+          handleSubtaskCreatorTimeChange,
+          confirmSubtaskCreatorTimePicker,
+          closeSubtaskCreatorTimePicker
+        )}
       {renderIOSPicker(
         showTaskEditorDatePicker,
         "date",

@@ -76,8 +76,19 @@ const Login: React.FC<Props> = ({
       await signInWithEmailAndPassword(FIREBASE_AUTH, email, password);
       // bij succesvolle login wordt navigation/redirect ergens anders afgehandeld
     } catch (error: any) {
-      // toon foutmelding in de geselecteerde taal
-      alert(translations[language].loginFailed + " " + error.message);
+      const code = error?.code ?? "";
+      const invalidCredentialCodes = [
+        "auth/user-not-found",
+        "auth/wrong-password",
+        "auth/invalid-credential",
+        "auth/invalid-login-credentials",
+      ];
+      if (invalidCredentialCodes.includes(code)) {
+        alert(translations[language].invalidCredentials);
+      } else {
+        console.log("Firebase login error:", error);
+        alert(translations[language].loginFailed);
+      }
     } finally {
       setLoading(false);
     }

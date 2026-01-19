@@ -9,6 +9,9 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import InlineSubtaskEditor, { SubtaskPriority } from "./InlineSubtaskEditor";
 import SummaryBadge from "./SummaryBadge";
 import type { ThemeColors } from "../theme";
@@ -34,6 +37,13 @@ export type SubtaskCreatorModalProps = {
     label: string;
     hint: string;
   };
+  iosPicker?: null | {
+    mode: "date" | "time";
+    value: Date | null;
+    onChange: (event: DateTimePickerEvent, date?: Date) => void;
+    onConfirm: () => void;
+    onCancel: () => void;
+  };
 };
 
 // Modal waarmee de gebruiker een subtaak met deadline, locatie en prioriteit kan voorbereiden.
@@ -55,6 +65,7 @@ const SubtaskCreatorModal: React.FC<SubtaskCreatorModalProps> = ({
   deadlinePreview,
   locationPreview,
   locationAccessibility,
+  iosPicker = null,
 }) => {
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   const title = language === "nl" ? "Nieuwe subtaak" : "New subtask";
@@ -75,13 +86,23 @@ const SubtaskCreatorModal: React.FC<SubtaskCreatorModalProps> = ({
     language === "nl"
       ? "Voeg de nieuwe subtaak toe met de huidige instellingen."
       : "Add the new subtask with the current settings.";
+  const shouldRenderPrimaryModal = visible;
+  const activeIOSPicker = Platform.OS === "ios" ? iosPicker : null;
+  const showIOSPicker = Boolean(activeIOSPicker);
+  const pickerDoneLabel = language === "nl" ? "Gereed" : "Done";
+
+  if (!shouldRenderPrimaryModal) {
+    return null;
+  }
 
   // Deze modal leunt op de gedeelde InlineSubtaskEditor maar verplaatst bevestigen naar een aparte knop.
   return (
     <Modal
       transparent
       animationType="fade"
-      visible={visible}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      visible={shouldRenderPrimaryModal}
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
@@ -169,6 +190,39 @@ const SubtaskCreatorModal: React.FC<SubtaskCreatorModalProps> = ({
             </View>
           </View>
         </View>
+
+        {showIOSPicker ? (
+          <View style={styles.pickerOverlay} pointerEvents="box-none">
+            <Pressable
+              accessibilityRole="button"
+              onPress={activeIOSPicker?.onCancel ?? (() => undefined)}
+              style={styles.pickerBackdrop}
+            />
+            <View style={styles.pickerSheetWrapper} pointerEvents="box-none">
+              <View style={styles.pickerSheet} pointerEvents="auto">
+                <DateTimePicker
+                  value={activeIOSPicker?.value ?? new Date()}
+                  mode={activeIOSPicker?.mode ?? "date"}
+                  display="spinner"
+                  onChange={activeIOSPicker?.onChange ?? (() => undefined)}
+                  style={styles.picker}
+                  textColor={colors.text}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={pickerDoneLabel}
+                  onPress={activeIOSPicker?.onConfirm ?? (() => undefined)}
+                  style={({ pressed }) => [
+                    styles.pickerDoneButton,
+                    pressed && styles.pickerDoneButtonPressed,
+                  ]}
+                >
+                  <Text style={styles.pickerDoneLabel}>{pickerDoneLabel}</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        ) : null}
       </View>
     </Modal>
   );
@@ -270,6 +324,59 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       fontWeight: "700",
       color: "#FFFFFF",
       letterSpacing: 0.3,
+    },
+    pickerOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: "flex-end",
+      zIndex: 20,
+    },
+    pickerBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.45)",
+    },
+    pickerSheetWrapper: {
+      padding: 16,
+      width: "100%",
+      alignItems: "center",
+    },
+    pickerSheet: {
+      width: "100%",
+      maxWidth: isWeb ? 540 : 520,
+      borderRadius: 24,
+      backgroundColor: colors.formBackground,
+      paddingTop: 16,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      shadowColor: "#000",
+      shadowOpacity: isLight ? 0.2 : 0.4,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 12 },
+      elevation: 16,
+    },
+    picker: {
+      width: "100%",
+      height: 220,
+    },
+    pickerDoneButton: {
+      marginTop: 12,
+      alignSelf: "flex-end",
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+      borderRadius: 14,
+      backgroundColor: colors.addButton,
+      shadowColor: colors.addButton,
+      shadowOpacity: isLight ? 0.2 : 0.3,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 6,
+    },
+    pickerDoneButtonPressed: {
+      opacity: 0.85,
+    },
+    pickerDoneLabel: {
+      color: "#FFFFFF",
+      fontSize: 15,
+      fontWeight: "600",
     },
   });
 };

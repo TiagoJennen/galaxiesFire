@@ -708,22 +708,19 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       textDecorationLine: "line-through",
     },
     metaRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
       marginTop: 10,
     },
     metaText: {
       color: isLight ? "#6F7787" : "#98A2B4",
       fontFamily: baseFont,
       fontSize: 12,
-      marginRight: 14,
-      marginTop: 2,
+      marginBottom: 4,
     },
     deadlineMeta: {
       flexDirection: "row",
       alignItems: "center",
-      marginRight: 14,
       marginTop: 2,
+      marginBottom: 2,
     },
     deadlineMetaText: {
       marginRight: 0,

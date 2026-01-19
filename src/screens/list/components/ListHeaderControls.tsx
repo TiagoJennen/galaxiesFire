@@ -10,7 +10,7 @@ type ListHeaderControlsProps = {
   language: "nl" | "en";
   theme: "light" | "dark";
   sortOrder: "oldest" | "newest";
-  prioritySort: "highToLow" | "lowToHigh";
+  prioritySort: "highToLow" | "lowToHigh" | null;
   title?: string;
   subtitle?: string;
   tasksLabel: string;
@@ -87,6 +87,36 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
     logoutLabel ?? (language === "nl" ? "Uitloggen" : "Logout");
   const logoutButtonHint =
     language === "nl" ? "Log direct uit deze app." : "Sign out of the app.";
+  const priorityIcon =
+    prioritySort === "highToLow"
+      ? "trending-down"
+      : prioritySort === "lowToHigh"
+        ? "trending-up"
+        : "funnel-outline";
+  const priorityLabel =
+    language === "nl"
+      ? prioritySort === null
+        ? "Prioriteit sorteren uit"
+        : prioritySort === "highToLow"
+          ? "Prioriteit hoog naar laag"
+          : "Prioriteit laag naar hoog"
+      : prioritySort === null
+        ? "Priority sorting off"
+        : prioritySort === "highToLow"
+          ? "Priority high to low"
+          : "Priority low to high";
+  const priorityHint =
+    language === "nl"
+      ? prioritySort === null
+        ? "Tik om prioriteit hoog naar laag in te schakelen."
+        : prioritySort === "highToLow"
+          ? "Tik voor laag naar hoog."
+          : "Tik om prioriteit sorteren uit te zetten."
+      : prioritySort === null
+        ? "Tap to sort high to low."
+        : prioritySort === "highToLow"
+          ? "Tap for low to high."
+          : "Tap to disable priority sorting.";
 
   // Layout past zich aan wanneer er geen titel of ondertitel aanwezig is.
   const headingStyles = [
@@ -170,8 +200,10 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
             onPress={onToggleSortOrder}
           />
           <ControlButton
-            icon={prioritySort === "highToLow" ? "funnel-outline" : "funnel"}
+            icon={priorityIcon}
             onPress={onTogglePrioritySort}
+            accessibilityLabel={priorityLabel}
+            accessibilityHint={priorityHint}
           />
           {showLogout ? (
             <ControlButton
@@ -232,10 +264,10 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
                 onPress={onToggleSortOrder}
               />
               <ControlButton
-                icon={
-                  prioritySort === "highToLow" ? "funnel-outline" : "funnel"
-                }
+                icon={priorityIcon}
                 onPress={onTogglePrioritySort}
+                accessibilityLabel={priorityLabel}
+                accessibilityHint={priorityHint}
               />
               {showLogout ? (
                 <ControlButton

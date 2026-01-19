@@ -34,6 +34,7 @@ type InlineSubtaskEditorProps = {
   };
   showInlineAdd?: boolean;
   variant?: "inline" | "modal";
+  inputRef?: React.RefObject<TextInput | null>;
 };
 
 const PRIORITY_BUTTONS: Array<{
@@ -61,6 +62,7 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
   accessibilityLabels,
   showInlineAdd = true,
   variant = "inline",
+  inputRef,
 }) => {
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   // Variant bepaalt of de component inline op de lijst staat of in een modal werkt.
@@ -90,6 +92,7 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
         placeholder={placeholder}
         value={text}
         onChangeText={onChangeText}
+        ref={inputRef ?? undefined}
         style={styles.input}
         placeholderTextColor={styles.placeholderColor.color as string}
         autoCorrect={false}
@@ -105,6 +108,7 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
                 onPress={() => onSelectPriority(button.value)}
                 style={({ pressed }) => [
                   styles.priorityChip,
+                  variant === "modal" && styles.priorityChipModal,
                   isActive && {
                     backgroundColor: button.activeColor,
                     shadowColor: button.activeColor,
@@ -182,7 +186,7 @@ const IconButton: React.FC<IconButtonProps> = ({
       pressed && styles.actionIconPressed,
     ]}
   >
-    <Ionicons name={icon} size={16} color={styles.iconTint.color} />
+    <Ionicons name={icon} size={15} color={styles.iconTint.color} />
   </Pressable>
 );
 
@@ -251,28 +255,31 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
     },
     controlsRowModal: {
       alignItems: "center",
-      flexWrap: isWeb ? "nowrap" : "wrap",
+      flexWrap: Platform.OS === "web" ? "nowrap" : "wrap",
     },
     priorityRow: {
       flexDirection: "row",
       flexWrap: "wrap",
       flexGrow: 0,
       flexShrink: 0,
-      marginRight: 16,
+      marginRight: 12,
       marginBottom: 12,
     },
     priorityRowInline: {
       marginBottom: 12,
     },
     priorityRowModal: {
-      marginBottom: isWeb ? 0 : 12,
+      marginBottom: 0,
+      alignItems: "center",
     },
     priorityChip: {
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 12,
-      marginRight: 8,
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      marginRight: 6,
       marginBottom: 8,
+      alignItems: "center",
+      justifyContent: "center",
       backgroundColor: isLight ? "#E1E6F0" : "#1F2734",
       shadowColor: "#000",
       shadowOpacity: 0.08,
@@ -280,12 +287,15 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       shadowOffset: { width: 0, height: 4 },
       elevation: 3,
     },
+    priorityChipModal: {
+      marginBottom: 0,
+    },
     priorityChipPressed: {
       transform: [{ scale: 0.97 }],
     },
     priorityLabel: {
       fontFamily: bodyFont,
-      fontWeight: "600",
+      fontWeight: "700",
       fontSize: 12,
       color: isLight ? "#5C6474" : "#A7B0C2",
     },
@@ -305,14 +315,15 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
     actionsClusterModal: {
       marginLeft: "auto",
       marginRight: 12,
+      marginBottom: 0,
     },
     actionsClusterNoAdd: {
       marginRight: 0,
     },
     actionIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
+      width: 32,
+      height: 32,
+      borderRadius: 8,
       backgroundColor: isLight ? "#E6ECF7" : "#1F2734",
       alignItems: "center",
       justifyContent: "center",
