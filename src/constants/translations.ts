@@ -44,6 +44,10 @@ export const translations = {
     locationLabel: "Locatie",
     locationLoading: "Adres laden...",
     locationUnavailable: "Adres niet beschikbaar",
+    priorityLabel: "Prioriteit",
+    priorityHigh: "Hoog",
+    priorityMedium: "Gemiddeld",
+    priorityLow: "Laag",
     locationRequired: "Stel eerst een locatie in voor deze taak.",
     locationPermissionDeniedTitle: "Locatie geweigerd",
     locationPermissionDeniedMessage:
@@ -104,6 +108,10 @@ export const translations = {
     locationLabel: "Location",
     locationLoading: "Loading address...",
     locationUnavailable: "Address unavailable",
+    priorityLabel: "Priority",
+    priorityHigh: "High",
+    priorityMedium: "Medium",
+    priorityLow: "Low",
     locationRequired: "Please set a location for this task first.",
     locationPermissionDeniedTitle: "Location denied",
     locationPermissionDeniedMessage:

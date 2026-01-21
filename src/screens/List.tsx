@@ -125,18 +125,18 @@ const List: React.FC<ListScreenProps> = ({
   const [shouldFocusTaskInput, setShouldFocusTaskInput] = useState(false);
   const [taskCreatorVisible, setTaskCreatorVisible] = useState(false);
   const [taskCreatorTarget, setTaskCreatorTarget] = useState<ListSource>(
-    lastShowArchive ? "archive" : "active"
+    lastShowArchive ? "archive" : "active",
   );
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">(
-    "medium"
+    "medium",
   );
   const [newSubtaskPriority, setNewSubtaskPriority] = useState<
     "low" | "medium" | "high"
   >("medium");
   const [newSubtaskLocation, setNewSubtaskLocation] = useState<LatLng | null>(
-    null
+    null,
   );
   const [sortOrder, setSortOrder] = useState<"oldest" | "newest">("oldest");
   const [prioritySort, setPrioritySort] = useState<
@@ -170,6 +170,9 @@ const List: React.FC<ListScreenProps> = ({
   const [taskEditorText, setTaskEditorText] = useState("");
   const [taskEditorDate, setTaskEditorDate] = useState<Date | null>(null);
   const [taskEditorTime, setTaskEditorTime] = useState<Date | null>(null);
+  const [taskEditorPriority, setTaskEditorPriority] = useState<
+    "low" | "medium" | "high"
+  >("medium");
   const [showTaskEditorDatePicker, setShowTaskEditorDatePicker] =
     useState(false);
   const [showTaskEditorTimePicker, setShowTaskEditorTimePicker] =
@@ -177,14 +180,14 @@ const List: React.FC<ListScreenProps> = ({
   const [taskEditorSource, setTaskEditorSource] =
     useState<ListSource>("active");
   const [taskEditorSnapshot, setTaskEditorSnapshot] = useState<Todo | null>(
-    null
+    null,
   );
   const [subtaskEditorVisible, setSubtaskEditorVisible] = useState(false);
   const [subtaskEditorParentIndex, setSubtaskEditorParentIndex] = useState<
     number | null
   >(null);
   const [subtaskEditorIndex, setSubtaskEditorIndex] = useState<number | null>(
-    null
+    null,
   );
   const [subtaskEditorText, setSubtaskEditorText] = useState("");
   const [subtaskEditorDate, setSubtaskEditorDate] = useState<Date | null>(null);
@@ -270,12 +273,12 @@ const List: React.FC<ListScreenProps> = ({
       message: string,
       confirmLabel: string,
       cancelLabel: string,
-      onConfirm: () => void
+      onConfirm: () => void,
     ) => {
       webConfirmCallbackRef.current = onConfirm;
       setWebConfirmDialog({ title, message, confirmLabel, cancelLabel });
     },
-    []
+    [],
   );
 
   // Sluit het confirmvenster en wis eventueel opgeslagen callbacks.
@@ -305,24 +308,24 @@ const List: React.FC<ListScreenProps> = ({
   const colors = useMemo(() => buildThemeColors(theme), [theme]);
   const webToastStyles = useMemo(
     () => createWebToastStyles(colors, theme),
-    [colors, theme]
+    [colors, theme],
   );
   const webConfirmStyles = useMemo(
     () => createWebConfirmStyles(colors, theme),
-    [colors, theme]
+    [colors, theme],
   );
   const floatingAddStyles = useMemo(
     () => createFloatingAddButtonStyles(colors, theme),
-    [colors, theme]
+    [colors, theme],
   );
   const iosPickerStyles = useMemo(
     () => createIOSPickerStyles(colors, theme),
-    [colors, theme]
+    [colors, theme],
   );
   const strings = useMemo(() => translations[language], [language]);
   const locale = useMemo(
     () => (language === "nl" ? "nl-NL" : "en-US"),
-    [language]
+    [language],
   );
   const isViewingToday = useMemo(() => {
     const today = new Date();
@@ -526,7 +529,7 @@ const List: React.FC<ListScreenProps> = ({
       }
       return parts.join(", ");
     },
-    []
+    [],
   );
 
   // Haal een mensleesbare beschrijving op voor een LatLng; gebruikt web fallback wanneer native services ontbreken.
@@ -602,7 +605,7 @@ const List: React.FC<ListScreenProps> = ({
         return null;
       }
     },
-    [composeAddressString, language]
+    [composeAddressString, language],
   );
 
   const getLocationDisplay = useCallback(
@@ -618,7 +621,7 @@ const List: React.FC<ListScreenProps> = ({
         ? strings.locationLoading
         : strings.locationUnavailable;
     },
-    [strings]
+    [strings],
   );
 
   const shouldIncludeTodo = useCallback(
@@ -633,7 +636,7 @@ const List: React.FC<ListScreenProps> = ({
       deadlineDate.setHours(0, 0, 0, 0);
       return deadlineDate.getTime() === selectedDay.getTime();
     },
-    [isViewingToday, selectedDay]
+    [isViewingToday, selectedDay],
   );
 
   // Sorteer en filter taken voor de lijstweergave op basis van geselecteerde dag en gekozen prioriteitsvolgorde.
@@ -661,7 +664,7 @@ const List: React.FC<ListScreenProps> = ({
             : 0;
           return sortOrder === "newest" ? bTime - aTime : aTime - bTime;
         }),
-    [prioritySort, shouldIncludeTodo, sortOrder]
+    [prioritySort, shouldIncludeTodo, sortOrder],
   );
 
   const buildSubtaskDisplay = useCallback(
@@ -687,17 +690,17 @@ const List: React.FC<ListScreenProps> = ({
             : 0;
           return sortOrder === "newest" ? bTime - aTime : aTime - bTime;
         }),
-    [prioritySort, sortOrder]
+    [prioritySort, sortOrder],
   );
 
   const activeDisplayTodos = useMemo(
     () => buildDisplayList(todos),
-    [buildDisplayList, todos]
+    [buildDisplayList, todos],
   );
 
   const archivedDisplayTodos = useMemo(
     () => buildDisplayList(archivedTodos),
-    [archivedTodos, buildDisplayList]
+    [archivedTodos, buildDisplayList],
   );
 
   // Vertaal taken met locatie naar geofence-targets voor de achtergrondtaak.
@@ -713,7 +716,7 @@ const List: React.FC<ListScreenProps> = ({
           latitude: todo.location!.latitude,
           longitude: todo.location!.longitude,
         })),
-    []
+    [],
   );
 
   const dateFormatter = useMemo(
@@ -723,7 +726,7 @@ const List: React.FC<ListScreenProps> = ({
         month: "2-digit",
         year: "numeric",
       }),
-    [locale]
+    [locale],
   );
 
   const timeFormatter = useMemo(
@@ -733,7 +736,7 @@ const List: React.FC<ListScreenProps> = ({
         minute: "2-digit",
         hour12: false,
       }),
-    [locale]
+    [locale],
   );
 
   const formatDate = useCallback(
@@ -744,7 +747,7 @@ const List: React.FC<ListScreenProps> = ({
       const timePart = timeFormatter.format(date);
       return `${datePart}\u00A0${timePart}`;
     },
-    [dateFormatter, timeFormatter]
+    [dateFormatter, timeFormatter],
   );
 
   useEffect(() => {
@@ -754,7 +757,7 @@ const List: React.FC<ListScreenProps> = ({
     const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, (user) => {
       if (!user) {
         AsyncStorage.removeItem("current_user_id").catch((error) =>
-          console.log("Failed to clear cached user id:", error)
+          console.log("Failed to clear cached user id:", error),
         );
         if (!cancelled) {
           setUserId(null);
@@ -778,7 +781,7 @@ const List: React.FC<ListScreenProps> = ({
       const uid = user.uid;
       setUserId(uid);
       AsyncStorage.setItem("current_user_id", uid).catch((error) =>
-        console.log("Failed to persist current_user_id:", error)
+        console.log("Failed to persist current_user_id:", error),
       );
 
       const task = InteractionManager.runAfterInteractions(async () => {
@@ -819,7 +822,7 @@ const List: React.FC<ListScreenProps> = ({
 
         try {
           const remote = await measureAsync("hydrate-remote-firestore", () =>
-            loadTodosFirebase(uid)
+            loadTodosFirebase(uid),
           );
           if (cancelled) return;
           setTodos(remote.todos);
@@ -833,7 +836,7 @@ const List: React.FC<ListScreenProps> = ({
               if (canSyncGeofences) {
                 await syncGeofenceTargets(
                   uid,
-                  geofenceTargetsFromTodos(remote.todos)
+                  geofenceTargetsFromTodos(remote.todos),
                 );
               }
             } catch (geoError) {
@@ -887,7 +890,7 @@ const List: React.FC<ListScreenProps> = ({
       if (
         log.tag === "Mbgl-HttpRequest" &&
         log.message.startsWith(
-          "Request failed due to a permanent error: Canceled"
+          "Request failed due to a permanent error: Canceled",
         )
       ) {
         return true;
@@ -920,34 +923,34 @@ const List: React.FC<ListScreenProps> = ({
       if (userId) {
         // Sla lokaal op per gebruiker en push naar firestore
         AsyncStorage.setItem(`todos_${userId}`, JSON.stringify(newTodos)).catch(
-          (e) => console.log("Fout bij opslaan todos lokaal:", e)
+          (e) => console.log("Fout bij opslaan todos lokaal:", e),
         );
         AsyncStorage.setItem(
           `archive_${userId}`,
-          JSON.stringify(newArchived)
+          JSON.stringify(newArchived),
         ).catch((e) => console.log("Fout bij opslaan archief lokaal:", e));
         saveTodosFirebase(userId, newTodos, newArchived);
       } else {
         // Sla lokaal op voor anonieme gebruiker
         AsyncStorage.setItem("todos_local", JSON.stringify(newTodos)).catch(
-          (e) => console.log("Fout bij opslaan todos lokaal (local):", e)
+          (e) => console.log("Fout bij opslaan todos lokaal (local):", e),
         );
         AsyncStorage.setItem(
           "archive_local",
-          JSON.stringify(newArchived)
+          JSON.stringify(newArchived),
         ).catch((e) =>
-          console.log("Fout bij opslaan archief lokaal (local):", e)
+          console.log("Fout bij opslaan archief lokaal (local):", e),
         );
       }
       const canSyncGeofences =
         userId && (locationPermissionGranted || Platform.OS === "web");
       if (canSyncGeofences) {
         syncGeofenceTargets(userId, geofenceTargetsFromTodos(newTodos)).catch(
-          (err) => console.log("Geofence sync failed:", err)
+          (err) => console.log("Geofence sync failed:", err),
         );
       }
     },
-    [userId, locationPermissionGranted, geofenceTargetsFromTodos]
+    [userId, locationPermissionGranted, geofenceTargetsFromTodos],
   );
 
   useEffect(() => {
@@ -1049,13 +1052,13 @@ const List: React.FC<ListScreenProps> = ({
 
     todos.forEach((todo, index) => registerTodo("active", index, todo));
     archivedTodos.forEach((todo, index) =>
-      registerTodo("archive", index, todo)
+      registerTodo("archive", index, todo),
     );
 
     const next = candidates.find(
       (candidate) =>
         !processedLocationIdsRef.current.has(candidate.id) &&
-        !inflightLocationKeysRef.current.has(candidate.key)
+        !inflightLocationKeysRef.current.has(candidate.key),
     );
     if (!next) {
       return;
@@ -1102,7 +1105,7 @@ const List: React.FC<ListScreenProps> = ({
         },
       ]);
     },
-    [language, openWebConfirm, strings]
+    [language, openWebConfirm, strings],
   );
 
   const showInputWarning = useCallback(
@@ -1115,14 +1118,14 @@ const List: React.FC<ListScreenProps> = ({
       const okLabel = "OK";
       Alert.alert(title, message, [{ text: okLabel }]);
     },
-    [language]
+    [language],
   );
 
   const showTaskFeedback = useCallback(
     (
       kind: "added" | "updated" | "deleted",
       target: ListSource,
-      options?: { label?: string; entity?: "task" | "subtask" }
+      options?: { label?: string; entity?: "task" | "subtask" },
     ) => {
       // Bouw een korte statusboodschap op maat van de actie en het platform.
       const isArchiveTarget = target === "archive";
@@ -1212,7 +1215,7 @@ const List: React.FC<ListScreenProps> = ({
       const okLabel = "OK";
       Alert.alert(title, message, [{ text: okLabel }]);
     },
-    [language]
+    [language],
   );
 
   // Combineer datum + tijd naar ISO string (gebruik 00:00 als geen tijd)
@@ -1227,7 +1230,7 @@ const List: React.FC<ListScreenProps> = ({
       }
       return d.toISOString();
     },
-    []
+    [],
   );
 
   const handleHeaderAddTask = useCallback(() => {
@@ -1287,7 +1290,7 @@ const List: React.FC<ListScreenProps> = ({
       task,
       todos,
       closeTaskCreatorModal,
-    ]
+    ],
   );
 
   const handleTaskCreatorAdd = useCallback(() => {
@@ -1302,6 +1305,13 @@ const List: React.FC<ListScreenProps> = ({
       setTaskEditorSource(source);
       setTaskEditorIndex(index);
       setTaskEditorText(target.text);
+      const nextPriority =
+        target.priority === "high" ||
+        target.priority === "low" ||
+        target.priority === "medium"
+          ? target.priority
+          : "medium";
+      setTaskEditorPriority(nextPriority);
       if (target.deadline) {
         const deadlineDate = new Date(target.deadline);
         setTaskEditorDate(deadlineDate);
@@ -1318,7 +1328,7 @@ const List: React.FC<ListScreenProps> = ({
       });
       setTaskEditorVisible(true);
     },
-    [archivedTodos, todos]
+    [archivedTodos, todos],
   );
 
   const closeTodoEditor = () => {
@@ -1327,6 +1337,7 @@ const List: React.FC<ListScreenProps> = ({
     setTaskEditorText("");
     setTaskEditorDate(null);
     setTaskEditorTime(null);
+    setTaskEditorPriority("medium");
     setShowTaskEditorDatePicker(false);
     setShowTaskEditorTimePicker(false);
     setTaskEditorSource("active");
@@ -1354,6 +1365,7 @@ const List: React.FC<ListScreenProps> = ({
       ...target,
       text: trimmed,
       deadline: combineDateAndTime(taskEditorDate, taskEditorTime),
+      priority: taskEditorPriority,
     };
     saveAll(updatedTodos, updatedArchived);
     showTaskFeedback("updated", isArchive ? "archive" : "active");
@@ -1364,7 +1376,7 @@ const List: React.FC<ListScreenProps> = ({
     Keyboard.dismiss();
     if (Platform.OS === "web") {
       openWebPicker("date", taskEditorDate, (value) =>
-        setTaskEditorDate(value)
+        setTaskEditorDate(value),
       );
       return;
     }
@@ -1376,7 +1388,7 @@ const List: React.FC<ListScreenProps> = ({
     Keyboard.dismiss();
     if (Platform.OS === "web") {
       openWebPicker("time", taskEditorTime, (value) =>
-        setTaskEditorTime(value)
+        setTaskEditorTime(value),
       );
       return;
     }
@@ -1391,7 +1403,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const handleTaskEditorDateChange = (
     event: DateTimePickerEvent,
-    date?: Date
+    date?: Date,
   ) => {
     if (event.type === "dismissed") {
       setShowTaskEditorDatePicker(false);
@@ -1405,7 +1417,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const handleTaskEditorTimeChange = (
     event: DateTimePickerEvent,
-    time?: Date
+    time?: Date,
   ) => {
     if (event.type === "dismissed") {
       setShowTaskEditorTimePicker(false);
@@ -1454,7 +1466,7 @@ const List: React.FC<ListScreenProps> = ({
     saveAll(updatedTodos, updatedArchived);
     if (taskEditorIndex === index && taskEditorSource === source) {
       setTaskEditorSnapshot((prev) =>
-        prev ? { ...prev, location: null, locationDescription: null } : prev
+        prev ? { ...prev, location: null, locationDescription: null } : prev,
       );
     }
   };
@@ -1464,7 +1476,7 @@ const List: React.FC<ListScreenProps> = ({
     subIndex: number,
     location: LatLng | null,
     source: ListSource = "active",
-    description?: string | null
+    description?: string | null,
   ) => {
     const updatedTodos = [...todos];
     const updatedArchived = [...archivedTodos];
@@ -1510,7 +1522,7 @@ const List: React.FC<ListScreenProps> = ({
       setShowSubtaskEditorTimePicker(false);
       setSubtaskEditorVisible(true);
     },
-    [archivedTodos, todos]
+    [archivedTodos, todos],
   );
 
   const closeSubtaskEditor = () => {
@@ -1566,7 +1578,7 @@ const List: React.FC<ListScreenProps> = ({
     Keyboard.dismiss();
     if (Platform.OS === "web") {
       openWebPicker("date", subtaskEditorDate, (value) =>
-        setSubtaskEditorDate(value)
+        setSubtaskEditorDate(value),
       );
       return;
     }
@@ -1578,7 +1590,7 @@ const List: React.FC<ListScreenProps> = ({
     Keyboard.dismiss();
     if (Platform.OS === "web") {
       openWebPicker("time", subtaskEditorTime, (value) =>
-        setSubtaskEditorTime(value)
+        setSubtaskEditorTime(value),
       );
       return;
     }
@@ -1593,7 +1605,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const handleSubtaskEditorDateChange = (
     event: DateTimePickerEvent,
-    date?: Date
+    date?: Date,
   ) => {
     if (event.type === "dismissed") {
       setShowSubtaskEditorDatePicker(false);
@@ -1607,7 +1619,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const handleSubtaskEditorTimeChange = (
     event: DateTimePickerEvent,
-    time?: Date
+    time?: Date,
   ) => {
     if (event.type === "dismissed") {
       setShowSubtaskEditorTimePicker(false);
@@ -1662,7 +1674,7 @@ const List: React.FC<ListScreenProps> = ({
       }
       saveAll(updatedTodos, updatedArchived);
     },
-    [archivedTodos, saveAll, todos]
+    [archivedTodos, saveAll, todos],
   );
 
   // Wissel done status voor subtask
@@ -1679,7 +1691,7 @@ const List: React.FC<ListScreenProps> = ({
       targetList[todoIndex] = { ...parent, subtasks: updatedSubtasks };
       saveAll(updatedTodos, updatedArchived);
     },
-    [archivedTodos, saveAll, todos]
+    [archivedTodos, saveAll, todos],
   );
 
   const removeSubtask = useCallback(
@@ -1695,7 +1707,7 @@ const List: React.FC<ListScreenProps> = ({
         }
         const removedSubtask = parent.subtasks[subIndex];
         const filteredSubtasks = parent.subtasks.filter(
-          (_, i) => i !== subIndex
+          (_, i) => i !== subIndex,
         );
         targetList[todoIndex] = { ...parent, subtasks: filteredSubtasks };
         saveAll(updatedTodos, updatedArchived);
@@ -1705,7 +1717,7 @@ const List: React.FC<ListScreenProps> = ({
         });
       });
     },
-    [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos]
+    [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos],
   );
 
   const beginInlineSubtaskCreation = useCallback(
@@ -1715,7 +1727,7 @@ const List: React.FC<ListScreenProps> = ({
       setSubtaskCreatorSource(source);
       setSubtaskCreatorVisible(true);
     },
-    [resetSubtaskDraft]
+    [resetSubtaskDraft],
   );
 
   // Verwijder taak (met confirm)
@@ -1725,14 +1737,14 @@ const List: React.FC<ListScreenProps> = ({
         const removed = todos[index];
         saveAll(
           todos.filter((_, i) => i !== index),
-          archivedTodos
+          archivedTodos,
         );
         showTaskFeedback("deleted", "active", {
           label: removed?.text,
         });
       });
     },
-    [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos]
+    [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos],
   );
 
   // Archiveer taak: verplaats van todos naar archivedTodos
@@ -1744,11 +1756,11 @@ const List: React.FC<ListScreenProps> = ({
       }
       saveAll(
         todos.filter((_, i) => i !== index),
-        [...archivedTodos, todoToArchive]
+        [...archivedTodos, todoToArchive],
       );
       showTaskFeedback("updated", "archive");
     },
-    [archivedTodos, saveAll, showTaskFeedback, todos]
+    [archivedTodos, saveAll, showTaskFeedback, todos],
   );
 
   const unarchiveTodo = useCallback(
@@ -1759,11 +1771,11 @@ const List: React.FC<ListScreenProps> = ({
       }
       saveAll(
         [...todos, todoToUnarchive],
-        archivedTodos.filter((_, i) => i !== index)
+        archivedTodos.filter((_, i) => i !== index),
       );
       showTaskFeedback("updated", "active");
     },
-    [archivedTodos, saveAll, showTaskFeedback, todos]
+    [archivedTodos, saveAll, showTaskFeedback, todos],
   );
 
   const removeArchivedTodo = useCallback(
@@ -1772,14 +1784,14 @@ const List: React.FC<ListScreenProps> = ({
         const removed = archivedTodos[index];
         saveAll(
           todos,
-          archivedTodos.filter((_, i) => i !== index)
+          archivedTodos.filter((_, i) => i !== index),
         );
         showTaskFeedback("deleted", "archive", {
           label: removed?.text,
         });
       });
     },
-    [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos]
+    [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos],
   );
 
   // Voeg subtask toe aan bestaande taak (met optionele deadline/tijd)
@@ -1800,7 +1812,7 @@ const List: React.FC<ListScreenProps> = ({
         showInputWarning(
           language === "nl"
             ? "Kon de hoofdtaak niet vinden."
-            : "Could not find the parent task."
+            : "Could not find the parent task.",
         );
         return;
       }
@@ -1841,7 +1853,7 @@ const List: React.FC<ListScreenProps> = ({
       subtaskText,
       subtaskTime,
       todos,
-    ]
+    ],
   );
 
   // Afbeelding toevoegen (camera of galerij). Ondersteunt web en native.
@@ -1852,7 +1864,7 @@ const List: React.FC<ListScreenProps> = ({
       todoIndex?: number,
       subIndex?: number,
       isArchive = false,
-      fromGallery = false
+      fromGallery = false,
     ) => {
       const applyImageUpdate = (uri: string) => {
         if (isArchive) {
@@ -1866,7 +1878,7 @@ const List: React.FC<ListScreenProps> = ({
               taskEditorSource === "archive"
             ) {
               setTaskEditorSnapshot((prev) =>
-                prev ? { ...prev, image: uri } : prev
+                prev ? { ...prev, image: uri } : prev,
               );
             }
           }
@@ -1882,7 +1894,7 @@ const List: React.FC<ListScreenProps> = ({
               taskEditorSource === "active"
             ) {
               setTaskEditorSnapshot((prev) =>
-                prev ? { ...prev, image: uri } : prev
+                prev ? { ...prev, image: uri } : prev,
               );
             }
           }
@@ -1917,7 +1929,7 @@ const List: React.FC<ListScreenProps> = ({
           alert(
             fromGallery
               ? "Toegang tot je galerij is nodig!"
-              : "Camera toegang is nodig!"
+              : "Camera toegang is nodig!",
           );
           return;
         }
@@ -1940,7 +1952,7 @@ const List: React.FC<ListScreenProps> = ({
         console.log("Image pick error:", e);
       }
     },
-    [archivedTodos, saveAll, taskEditorIndex, taskEditorSource, todos]
+    [archivedTodos, saveAll, taskEditorIndex, taskEditorSource, todos],
   );
 
   // Logout: bewaar eerst naar firebase, daarna sign out
@@ -1981,7 +1993,7 @@ const List: React.FC<ListScreenProps> = ({
   const formatTimeInput = (value: Date | null) =>
     value
       ? `${String(value.getHours()).padStart(2, "0")}:${String(
-          value.getMinutes()
+          value.getMinutes(),
         ).padStart(2, "0")}`
       : "";
 
@@ -1994,7 +2006,7 @@ const List: React.FC<ListScreenProps> = ({
   const openWebPicker = (
     mode: "date" | "time",
     initialValue: Date | null,
-    onConfirm: (value: Date) => void
+    onConfirm: (value: Date) => void,
   ) => {
     if (Platform.OS !== "web") return;
     const isDate = mode === "date";
@@ -2022,7 +2034,7 @@ const List: React.FC<ListScreenProps> = ({
     setWebPickerText(
       mode === "date"
         ? formatDateInput(initialValue)
-        : formatTimeInput(initialValue)
+        : formatTimeInput(initialValue),
     );
     setWebPickerError(null);
   };
@@ -2040,7 +2052,7 @@ const List: React.FC<ListScreenProps> = ({
             : "Enter a valid date."
           : language === "nl"
             ? "Voer een geldige tijd in."
-            : "Enter a valid time."
+            : "Enter a valid time.",
       );
       return;
     }
@@ -2225,7 +2237,7 @@ const List: React.FC<ListScreenProps> = ({
     value: Date | null,
     onChange: (event: DateTimePickerEvent, date?: Date) => void,
     onConfirm: () => void,
-    onCancel: () => void
+    onCancel: () => void,
   ) => {
     if (!isIOS || !visible) return null;
     if (__DEV__) {
@@ -2275,7 +2287,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const handleTaskCreatorTimeChange = (
     event: DateTimePickerEvent,
-    time?: Date
+    time?: Date,
   ) => {
     if (event.type === "dismissed") {
       setShowTimePicker(false);
@@ -2289,7 +2301,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const handleTaskCreatorDateChange = (
     event: DateTimePickerEvent,
-    date?: Date
+    date?: Date,
   ) => {
     if (event.type === "dismissed") {
       setShowDatePicker(false);
@@ -2303,7 +2315,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const handleSubtaskCreatorDateChange = (
     event: DateTimePickerEvent,
-    date?: Date
+    date?: Date,
   ) => {
     if (event.type === "dismissed") {
       setShowSubtaskDatePicker(false);
@@ -2317,7 +2329,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const handleSubtaskCreatorTimeChange = (
     event: DateTimePickerEvent,
-    time?: Date
+    time?: Date,
   ) => {
     if (event.type === "dismissed") {
       setShowSubtaskTimePicker(false);
@@ -2374,7 +2386,7 @@ const List: React.FC<ListScreenProps> = ({
     async (
       todoIndex?: number,
       source: ListSource = "active",
-      subtaskIndex: number | null = null
+      subtaskIndex: number | null = null,
     ) => {
       const editingIndex = typeof todoIndex === "number" ? todoIndex : null;
 
@@ -2433,7 +2445,7 @@ const List: React.FC<ListScreenProps> = ({
       setEditingLocationTodoIndex(editingIndex);
       setEditingLocationSource(source);
       setEditingLocationSubtaskIndex(
-        typeof subtaskIndex === "number" ? subtaskIndex : null
+        typeof subtaskIndex === "number" ? subtaskIndex : null,
       );
       setLocationHelperMessage(null);
       setLocationLoading(true);
@@ -2451,7 +2463,7 @@ const List: React.FC<ListScreenProps> = ({
           setLocationHelperMessage(
             language === "nl"
               ? "Locatieservices staan uit. Kies handmatig een locatie op de kaart."
-              : "Location services are disabled. Select a location manually on the map."
+              : "Location services are disabled. Select a location manually on the map.",
           );
         } else if (
           Location?.requestForegroundPermissionsAsync &&
@@ -2487,7 +2499,7 @@ const List: React.FC<ListScreenProps> = ({
               setLocationHelperMessage(
                 language === "nl"
                   ? "Kon huidige locatie niet ophalen. Kies handmatig een locatie."
-                  : "Unable to fetch current location. Please pick a spot manually."
+                  : "Unable to fetch current location. Please pick a spot manually.",
               );
             }
           } else {
@@ -2495,7 +2507,7 @@ const List: React.FC<ListScreenProps> = ({
             setLocationHelperMessage(
               language === "nl"
                 ? "Locatietoegang geweigerd. Kies handmatig een locatie op de kaart."
-                : "Location access denied. Select a location manually on the map."
+                : "Location access denied. Select a location manually on the map.",
             );
           }
         } else {
@@ -2503,7 +2515,7 @@ const List: React.FC<ListScreenProps> = ({
           setLocationHelperMessage(
             language === "nl"
               ? "expo-location niet beschikbaar. Kies handmatig een locatie op de kaart."
-              : "expo-location unavailable. Select a location manually on the map."
+              : "expo-location unavailable. Select a location manually on the map.",
           );
         }
 
@@ -2516,7 +2528,7 @@ const List: React.FC<ListScreenProps> = ({
               prev ?? {
                 latitude: workingRegion.latitude,
                 longitude: workingRegion.longitude,
-              }
+              },
           );
         }
         setSelectedLocationDescription(seededDescription ?? null);
@@ -2537,7 +2549,7 @@ const List: React.FC<ListScreenProps> = ({
         setLocationHelperMessage(
           language === "nl"
             ? "Locatie ophalen mislukt."
-            : "Failed to fetch location."
+            : "Failed to fetch location.",
         );
       } finally {
         setLocationLoading(false);
@@ -2553,7 +2565,7 @@ const List: React.FC<ListScreenProps> = ({
       selectedLocationDescription,
       showInputWarning,
       todos,
-    ]
+    ],
   );
 
   const handleTaskCreatorOpenLocation = useCallback(() => {
@@ -2571,7 +2583,7 @@ const List: React.FC<ListScreenProps> = ({
     openLocationPicker(
       subtaskCreatorParentIndex,
       subtaskCreatorSource,
-      NEW_SUBTASK_LOCATION_INDEX
+      NEW_SUBTASK_LOCATION_INDEX,
     );
   }, [openLocationPicker, subtaskCreatorParentIndex, subtaskCreatorSource]);
 
@@ -2612,7 +2624,7 @@ const List: React.FC<ListScreenProps> = ({
           subIndex,
           resolvedLocation,
           editingLocationSource,
-          description ?? null
+          description ?? null,
         );
       }
       setSelectedLocation(null);
@@ -2648,7 +2660,7 @@ const List: React.FC<ListScreenProps> = ({
                 location: resolvedLocation,
                 locationDescription: description ?? null,
               }
-            : prev
+            : prev,
         );
       }
       setSelectedLocation(null);
@@ -2684,7 +2696,7 @@ const List: React.FC<ListScreenProps> = ({
             latitudeDelta: 0.01,
             longitudeDelta: 0.01,
           }
-        : DEFAULT_REGION
+        : DEFAULT_REGION,
     );
     setLocationHelperMessage(null);
     setLocationLoading(false);
@@ -2696,7 +2708,7 @@ const List: React.FC<ListScreenProps> = ({
       showInputWarning(
         language === "nl"
           ? "Voer een adres in om te zoeken."
-          : "Enter an address to search."
+          : "Enter an address to search.",
       );
       return;
     }
@@ -2705,7 +2717,7 @@ const List: React.FC<ListScreenProps> = ({
     try {
       if (Platform.OS === "web") {
         const endpoint = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(
-          query
+          query,
         )}`;
         const response = await fetch(endpoint, {
           headers: {
@@ -2782,7 +2794,7 @@ const List: React.FC<ListScreenProps> = ({
       setLocationSearchText("");
       setLocationModalVisible(true);
     },
-    [language, showInputWarning]
+    [language, showInputWarning],
   );
   const updateSelectedLocation = (coord: LatLng) => {
     setSelectedLocation(coord);
@@ -2794,7 +2806,7 @@ const List: React.FC<ListScreenProps> = ({
             ...DEFAULT_REGION,
             latitude: coord.latitude,
             longitude: coord.longitude,
-          }
+          },
     );
   };
   const mapFocus = (selectedLocation ?? mapRegion ?? DEFAULT_REGION) as LatLng &
@@ -2877,7 +2889,7 @@ const List: React.FC<ListScreenProps> = ({
               : "Notifications denied",
             language === "nl"
               ? "Schakel notificaties in via de instellingen om deadline-meldingen te ontvangen."
-              : "Enable notifications in settings to receive deadline alerts."
+              : "Enable notifications in settings to receive deadline alerts.",
           );
           setNotificationsEnabled(false);
           return;
@@ -3004,7 +3016,7 @@ const List: React.FC<ListScreenProps> = ({
                 } catch (err) {
                   console.log(
                     `Failed to schedule task notification (${stage.key}):`,
-                    err
+                    err,
                   );
                 }
               }
@@ -3026,7 +3038,7 @@ const List: React.FC<ListScreenProps> = ({
               } catch (err) {
                 console.log(
                   "Failed to schedule overdue task notification:",
-                  err
+                  err,
                 );
               }
             }
@@ -3056,7 +3068,7 @@ const List: React.FC<ListScreenProps> = ({
                   } catch (err) {
                     console.log(
                       `Failed to schedule subtask notification (${stage.key}):`,
-                      err
+                      err,
                     );
                   }
                 }
@@ -3078,7 +3090,7 @@ const List: React.FC<ListScreenProps> = ({
                 } catch (err) {
                   console.log(
                     "Failed to schedule overdue subtask notification:",
-                    err
+                    err,
                   );
                 }
               }
@@ -3160,19 +3172,19 @@ const List: React.FC<ListScreenProps> = ({
   const subtaskCreatorLocationDisplay = newSubtaskLocation
     ? getLocationDisplay(
         newSubtaskLocation,
-        newSubtaskLocationDescription ?? null
+        newSubtaskLocationDescription ?? null,
       )
     : "";
   const editingTodoLocationDescription = editingTodo?.location
     ? getLocationDisplay(
         editingTodo.location,
-        editingTodo.locationDescription ?? null
+        editingTodo.locationDescription ?? null,
       )
     : "";
   const editingSubtaskLocationDescription = editingSubtask?.location
     ? getLocationDisplay(
         editingSubtask.location,
-        editingSubtask.locationDescription ?? null
+        editingSubtask.locationDescription ?? null,
       )
     : "";
   const subtaskModalStrings = useMemo(
@@ -3191,10 +3203,14 @@ const List: React.FC<ListScreenProps> = ({
       noLocationSelected: strings.noLocationSelected,
       updateLocation: strings.updateLocation,
       removeLocation: strings.removeLocation,
+      priorityLabel: strings.priorityLabel,
+      priorityHigh: strings.priorityHigh,
+      priorityMedium: strings.priorityMedium,
+      priorityLow: strings.priorityLow,
       cancel: strings.cancel,
       saveChanges: strings.saveChanges,
     }),
-    [strings]
+    [strings],
   );
   const taskModalStrings = useMemo(
     () => ({
@@ -3212,10 +3228,14 @@ const List: React.FC<ListScreenProps> = ({
       noLocationSelected: strings.noLocationSelected,
       updateLocation: strings.updateLocation,
       removeLocation: strings.removeLocation,
+      priorityLabel: strings.priorityLabel,
+      priorityHigh: strings.priorityHigh,
+      priorityMedium: strings.priorityMedium,
+      priorityLow: strings.priorityLow,
       cancel: strings.cancel,
       saveChanges: strings.saveChanges,
     }),
-    [strings]
+    [strings],
   );
   const handleSubtaskEditorPickCamera = () => {
     if (subtaskEditorParentIndex === null || subtaskEditorIndex === null) {
@@ -3225,7 +3245,7 @@ const List: React.FC<ListScreenProps> = ({
       true,
       subtaskEditorParentIndex,
       subtaskEditorIndex,
-      subtaskEditorSource === "archive"
+      subtaskEditorSource === "archive",
     );
   };
   const handleSubtaskEditorPickGallery = () => {
@@ -3237,7 +3257,7 @@ const List: React.FC<ListScreenProps> = ({
       subtaskEditorParentIndex,
       subtaskEditorIndex,
       subtaskEditorSource === "archive",
-      true
+      true,
     );
   };
   const handleSubtaskEditorUpdateLocation = () => {
@@ -3247,7 +3267,7 @@ const List: React.FC<ListScreenProps> = ({
     openLocationPicker(
       subtaskEditorParentIndex,
       subtaskEditorSource,
-      subtaskEditorIndex
+      subtaskEditorIndex,
     );
   };
   const handleSubtaskEditorRemoveLocation = () => {
@@ -3259,7 +3279,7 @@ const List: React.FC<ListScreenProps> = ({
       subtaskEditorIndex,
       null,
       subtaskEditorSource,
-      null
+      null,
     );
     setSelectedLocation(null);
     setMapRegion(null);
@@ -3272,7 +3292,7 @@ const List: React.FC<ListScreenProps> = ({
       false,
       taskEditorIndex,
       undefined,
-      taskEditorSource === "archive"
+      taskEditorSource === "archive",
     );
   };
   const handleTaskEditorPickGallery = () => {
@@ -3284,7 +3304,7 @@ const List: React.FC<ListScreenProps> = ({
       taskEditorIndex,
       undefined,
       taskEditorSource === "archive",
-      true
+      true,
     );
   };
   const handleTaskEditorRemoveImage = () => {
@@ -3305,6 +3325,16 @@ const List: React.FC<ListScreenProps> = ({
     }
     clearTodoLocation(taskEditorIndex, taskEditorSource);
   };
+
+  const handleTaskEditorSelectPriority = useCallback(
+    (value: "low" | "medium" | "high") => {
+      setTaskEditorPriority(value);
+      setTaskEditorSnapshot((prev) =>
+        prev ? { ...prev, priority: value } : prev,
+      );
+    },
+    [],
+  );
 
   if (!authReady || !userId) {
     return null;
@@ -3637,6 +3667,8 @@ const List: React.FC<ListScreenProps> = ({
         showTimePicker={showTaskEditorTimePicker}
         dateValue={taskEditorDate}
         timeValue={taskEditorTime}
+        priority={taskEditorPriority}
+        onSelectPriority={handleTaskEditorSelectPriority}
         onChangeDate={handleTaskEditorDateChange}
         onChangeTime={handleTaskEditorTimeChange}
         onClose={closeTodoEditor}
@@ -3686,7 +3718,7 @@ const List: React.FC<ListScreenProps> = ({
           selectedDate,
           handleTaskCreatorDateChange,
           confirmTaskCreatorDatePicker,
-          closeTaskCreatorDatePicker
+          closeTaskCreatorDatePicker,
         )}
       {!taskCreatorIOSPicker &&
         renderIOSPicker(
@@ -3695,7 +3727,7 @@ const List: React.FC<ListScreenProps> = ({
           selectedTime,
           handleTaskCreatorTimeChange,
           confirmTaskCreatorTimePicker,
-          closeTaskCreatorTimePicker
+          closeTaskCreatorTimePicker,
         )}
       {!subtaskCreatorIOSPicker &&
         renderIOSPicker(
@@ -3704,7 +3736,7 @@ const List: React.FC<ListScreenProps> = ({
           subtaskDate,
           handleSubtaskCreatorDateChange,
           confirmSubtaskCreatorDatePicker,
-          closeSubtaskCreatorDatePicker
+          closeSubtaskCreatorDatePicker,
         )}
       {!subtaskCreatorIOSPicker &&
         renderIOSPicker(
@@ -3713,7 +3745,7 @@ const List: React.FC<ListScreenProps> = ({
           subtaskTime,
           handleSubtaskCreatorTimeChange,
           confirmSubtaskCreatorTimePicker,
-          closeSubtaskCreatorTimePicker
+          closeSubtaskCreatorTimePicker,
         )}
       {renderIOSPicker(
         showTaskEditorDatePicker,
@@ -3721,7 +3753,7 @@ const List: React.FC<ListScreenProps> = ({
         taskEditorDate,
         handleTaskEditorDateChange,
         confirmTaskEditorDatePicker,
-        closeTaskEditorDatePicker
+        closeTaskEditorDatePicker,
       )}
       {renderIOSPicker(
         showTaskEditorTimePicker,
@@ -3729,7 +3761,7 @@ const List: React.FC<ListScreenProps> = ({
         taskEditorTime,
         handleTaskEditorTimeChange,
         confirmTaskEditorTimePicker,
-        closeTaskEditorTimePicker
+        closeTaskEditorTimePicker,
       )}
       {renderIOSPicker(
         showSubtaskEditorDatePicker,
@@ -3737,7 +3769,7 @@ const List: React.FC<ListScreenProps> = ({
         subtaskEditorDate,
         handleSubtaskEditorDateChange,
         confirmSubtaskEditorDatePicker,
-        closeSubtaskEditorDatePicker
+        closeSubtaskEditorDatePicker,
       )}
       {renderIOSPicker(
         showSubtaskEditorTimePicker,
@@ -3745,7 +3777,7 @@ const List: React.FC<ListScreenProps> = ({
         subtaskEditorTime,
         handleSubtaskEditorTimeChange,
         confirmSubtaskEditorTimePicker,
-        closeSubtaskEditorTimePicker
+        closeSubtaskEditorTimePicker,
       )}
 
       {/* Als we het hoofd taken scherm tonen */}
@@ -3898,7 +3930,7 @@ const List: React.FC<ListScreenProps> = ({
 
 const createWebConfirmStyles = (
   colors: ThemeColors,
-  theme: "light" | "dark"
+  theme: "light" | "dark",
 ) => {
   // Deze stijlen bepalen de lichte/donkere uitstraling van de web confirm modal.
   const isLight = theme === "light";
@@ -4049,7 +4081,7 @@ const createWebToastStyles = (colors: ThemeColors, theme: "light" | "dark") => {
 
 const createIOSPickerStyles = (
   colors: ThemeColors,
-  theme: "light" | "dark"
+  theme: "light" | "dark",
 ) => {
   const isLight = theme === "light";
 
@@ -4111,7 +4143,7 @@ const createIOSPickerStyles = (
 
 const createFloatingAddButtonStyles = (
   colors: ThemeColors,
-  theme: "light" | "dark"
+  theme: "light" | "dark",
 ) => {
   const accent = colors.addButton;
   const isLight = theme === "light";

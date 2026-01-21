@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import SummaryBadge from "./SummaryBadge";
 import type { ThemeColors } from "../theme";
 import type { Todo } from "../types";
+import type { TaskPriority } from "./TaskCreator";
 
 type TaskStrings = {
   editTask: string;
@@ -35,6 +36,10 @@ type TaskStrings = {
   noLocationSelected: string;
   updateLocation: string;
   removeLocation: string;
+  priorityLabel: string;
+  priorityHigh: string;
+  priorityMedium: string;
+  priorityLow: string;
   cancel: string;
   saveChanges: string;
 };
@@ -54,6 +59,8 @@ type TaskEditorModalProps = {
   showTimePicker: boolean;
   dateValue: Date | null;
   timeValue: Date | null;
+  priority: TaskPriority;
+  onSelectPriority: (value: TaskPriority) => void;
   onChangeDate: (event: DateTimePickerEvent, date?: Date) => void;
   onChangeTime: (event: DateTimePickerEvent, time?: Date) => void;
   onClose: () => void;
@@ -67,6 +74,16 @@ type TaskEditorModalProps = {
   locationDescription?: string;
   strings: TaskStrings;
 };
+
+const PRIORITY_BUTTONS: Array<{
+  label: string;
+  value: TaskPriority;
+  activeColor: string;
+}> = [
+  { label: "H", value: "high", activeColor: "#ff6b6b" },
+  { label: "M", value: "medium", activeColor: "#ffb366" },
+  { label: "L", value: "low", activeColor: "#6bc66b" },
+];
 
 export const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
   visible,
@@ -83,6 +100,8 @@ export const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
   showTimePicker,
   dateValue,
   timeValue,
+  priority,
+  onSelectPriority,
   onChangeDate,
   onChangeTime,
   onClose,
@@ -100,8 +119,18 @@ export const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
   // Modal om een bestaande taak te bewerken; web en native delen dezelfde layout.
   const styles = useMemo(
     () => createStyles(colors, theme, { width, height }),
-    [colors, theme, height, width]
+    [colors, theme, height, width],
   );
+  const priorityLabelMap: Record<TaskPriority, string> = useMemo(
+    () => ({
+      high: strings.priorityHigh,
+      medium: strings.priorityMedium,
+      low: strings.priorityLow,
+    }),
+    [strings.priorityHigh, strings.priorityLow, strings.priorityMedium],
+  );
+  const selectedPriorityLabel =
+    priorityLabelMap[priority] ?? priorityLabelMap.medium;
 
   if (!visible || !editingTodo) {
     return null;
@@ -201,6 +230,46 @@ export const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
                   placeholderTextColor={colors.placeholder}
                   style={styles.input}
                 />
+              </View>
+
+              <View style={styles.sectionCard}>
+                <Text style={styles.sectionTitle}>{strings.priorityLabel}</Text>
+                <Text style={styles.prioritySelectedLabel}>
+                  {selectedPriorityLabel}
+                </Text>
+                <View style={styles.priorityRow}>
+                  {PRIORITY_BUTTONS.map((button) => {
+                    const isActive = priority === button.value;
+                    const accessibleLabel = priorityLabelMap[button.value];
+                    return (
+                      <Pressable
+                        key={button.value}
+                        accessibilityRole="button"
+                        accessibilityLabel={accessibleLabel}
+                        accessibilityState={{ selected: isActive }}
+                        onPress={() => onSelectPriority(button.value)}
+                        style={({ pressed }) => [
+                          styles.priorityChip,
+                          isActive && styles.priorityChipActive,
+                          isActive && {
+                            backgroundColor: button.activeColor,
+                            shadowColor: button.activeColor,
+                          },
+                          pressed && styles.priorityChipPressed,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.priorityLabel,
+                            isActive && styles.priorityLabelActive,
+                          ]}
+                        >
+                          {button.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
 
               <View style={styles.sectionCard}>
@@ -462,7 +531,7 @@ export default TaskEditorModal;
 const createStyles = (
   colors: ThemeColors,
   theme: "light" | "dark",
-  layout: { width: number; height: number }
+  layout: { width: number; height: number },
 ) => {
   const isLight = theme === "light";
   const accent = colors.addButton;
@@ -475,7 +544,7 @@ const createStyles = (
   const horizontalSpace = width - overlayPadding * 2;
   let panelWidth = Math.min(
     maxPanelWidth,
-    horizontalSpace > 0 ? horizontalSpace : Math.max(width, 0)
+    horizontalSpace > 0 ? horizontalSpace : Math.max(width, 0),
   );
   if (panelWidth <= 0) {
     panelWidth = Math.min(maxPanelWidth, width > 0 ? width : maxPanelWidth);
@@ -487,7 +556,7 @@ const createStyles = (
   const limitedHeight = Math.min(
     heightCap,
     adaptiveLimit,
-    availableHeight > 0 ? availableHeight : heightCap
+    availableHeight > 0 ? availableHeight : heightCap,
   );
   const minHeight = availableHeight > 0 ? Math.min(availableHeight, 360) : 360;
   const panelMaxHeight =
@@ -497,7 +566,7 @@ const createStyles = (
   const reservedHeight = panelPadding * 2 + 140;
   const contentMaxHeight = Math.min(
     panelMaxHeight - panelPadding * 2,
-    Math.max(panelMaxHeight - reservedHeight, 220)
+    Math.max(panelMaxHeight - reservedHeight, 220),
   );
 
   return StyleSheet.create({
@@ -605,6 +674,50 @@ const createStyles = (
       fontSize: 15,
       fontWeight: "700",
       color: colors.text,
+    },
+    priorityRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      marginTop: 16,
+    },
+    priorityChip: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 8,
+      marginBottom: 10,
+      backgroundColor: isLight ? "#E1E6F0" : "#1F2734",
+      shadowColor: "#000",
+      shadowOpacity: 0.08,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+    },
+    priorityChipActive: {
+      shadowOpacity: 0.2,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 6,
+    },
+    priorityChipPressed: {
+      transform: [{ scale: 0.96 }],
+      opacity: 0.9,
+    },
+    priorityLabel: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: isLight ? "#5C6474" : "#A7B0C2",
+    },
+    priorityLabelActive: {
+      color: "#FFFFFF",
+    },
+    prioritySelectedLabel: {
+      marginTop: 12,
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.placeholder,
     },
     input: {
       borderRadius: 16,
