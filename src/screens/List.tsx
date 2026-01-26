@@ -19,6 +19,7 @@ import {
   StyleSheet,
   Keyboard,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
@@ -100,6 +101,12 @@ type WebToastEntry = {
 
 const MAX_WEB_TOASTS = 4;
 
+type RecentlyDeletedRecord = {
+  todo: Todo;
+  source: ListSource;
+  index: number;
+};
+
 // Hoofdfunctie van het scherm: toont takenlijst, formulieren en archive
 const List: React.FC<ListScreenProps> = ({
   theme,
@@ -108,6 +115,7 @@ const List: React.FC<ListScreenProps> = ({
   toggleLanguage,
 }) => {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const isIOS = Platform.OS === "ios";
   const [task, setTask] = useState("");
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -204,6 +212,8 @@ const List: React.FC<ListScreenProps> = ({
   >(null);
   const [subtaskCreatorSource, setSubtaskCreatorSource] =
     useState<ListSource>("active");
+  const [recentlyDeleted, setRecentlyDeleted] =
+    useState<RecentlyDeletedRecord | null>(null);
   // Beheer de inline web datum-/tijdkiezer zodat web dezelfde flow als native volgt.
   const [webPickerState, setWebPickerState] = useState<{
     mode: "date" | "time";
@@ -240,6 +250,9 @@ const List: React.FC<ListScreenProps> = ({
   const webToastTimersRef = useRef<
     Record<string, ReturnType<typeof setTimeout>>
   >({});
+  const recentlyDeletedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const closeTaskCreatorModal = useCallback(() => {
     setTaskCreatorVisible(false);
@@ -318,6 +331,24 @@ const List: React.FC<ListScreenProps> = ({
     () => createFloatingAddButtonStyles(colors, theme),
     [colors, theme],
   );
+  const restoreBannerStyles = useMemo(
+    () => createRestoreBannerStyles(colors, theme),
+    [colors, theme],
+  );
+  const restoreBannerBottom = useMemo(() => {
+    const base = Platform.OS === "web" ? 32 : 24;
+    const additional = Platform.OS === "web" ? 0 : insets.bottom;
+    return base + additional;
+  }, [insets.bottom]);
+  const restoreBannerSides = useMemo(() => {
+    const base = 20;
+    const additionalLeft = Platform.OS === "web" ? 0 : insets.left;
+    const additionalRight = Platform.OS === "web" ? 0 : insets.right;
+    return {
+      left: base + additionalLeft,
+      right: base + additionalRight,
+    };
+  }, [insets.left, insets.right]);
   const iosPickerStyles = useMemo(
     () => createIOSPickerStyles(colors, theme),
     [colors, theme],
@@ -1218,6 +1249,60 @@ const List: React.FC<ListScreenProps> = ({
     [language],
   );
 
+  const clearRecentlyDeletedTimer = useCallback(() => {
+    const timer = recentlyDeletedTimerRef.current;
+    if (timer) {
+      clearTimeout(timer);
+      recentlyDeletedTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleRecentlyDeletedReset = useCallback(() => {
+    clearRecentlyDeletedTimer();
+    recentlyDeletedTimerRef.current = setTimeout(() => {
+      setRecentlyDeleted(null);
+      recentlyDeletedTimerRef.current = null;
+    }, 10000);
+  }, [clearRecentlyDeletedTimer]);
+
+  const dismissRecentlyDeleted = useCallback(() => {
+    clearRecentlyDeletedTimer();
+    setRecentlyDeleted(null);
+  }, [clearRecentlyDeletedTimer]);
+
+  const handleRestoreRecentlyDeleted = useCallback(() => {
+    if (!recentlyDeleted) {
+      return;
+    }
+    const { todo: deletedTodo, source, index } = recentlyDeleted;
+    const nextTodos = [...todos];
+    const nextArchived = [...archivedTodos];
+    if (source === "archive") {
+      const insertIndex = Math.min(index, nextArchived.length);
+      nextArchived.splice(insertIndex, 0, deletedTodo);
+    } else {
+      const insertIndex = Math.min(index, nextTodos.length);
+      nextTodos.splice(insertIndex, 0, deletedTodo);
+    }
+    saveAll(nextTodos, nextArchived);
+    showTaskFeedback("added", source, { label: deletedTodo.text });
+    clearRecentlyDeletedTimer();
+    setRecentlyDeleted(null);
+  }, [
+    archivedTodos,
+    clearRecentlyDeletedTimer,
+    recentlyDeleted,
+    saveAll,
+    showTaskFeedback,
+    todos,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      clearRecentlyDeletedTimer();
+    };
+  }, [clearRecentlyDeletedTimer]);
+
   // Combineer datum + tijd naar ISO string (gebruik 00:00 als geen tijd)
   const combineDateAndTime = useCallback(
     (date: Date | null, time: Date | null) => {
@@ -1742,9 +1827,25 @@ const List: React.FC<ListScreenProps> = ({
         showTaskFeedback("deleted", "active", {
           label: removed?.text,
         });
+        if (removed) {
+          setRecentlyDeleted({
+            todo: removed,
+            source: "active",
+            index,
+          });
+          scheduleRecentlyDeletedReset();
+        }
       });
     },
-    [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos],
+    [
+      archivedTodos,
+      confirmDelete,
+      saveAll,
+      scheduleRecentlyDeletedReset,
+      showTaskFeedback,
+      strings,
+      todos,
+    ],
   );
 
   // Archiveer taak: verplaats van todos naar archivedTodos
@@ -1789,9 +1890,25 @@ const List: React.FC<ListScreenProps> = ({
         showTaskFeedback("deleted", "archive", {
           label: removed?.text,
         });
+        if (removed) {
+          setRecentlyDeleted({
+            todo: removed,
+            source: "archive",
+            index,
+          });
+          scheduleRecentlyDeletedReset();
+        }
       });
     },
-    [archivedTodos, confirmDelete, saveAll, showTaskFeedback, strings, todos],
+    [
+      archivedTodos,
+      confirmDelete,
+      saveAll,
+      scheduleRecentlyDeletedReset,
+      showTaskFeedback,
+      strings,
+      todos,
+    ],
   );
 
   // Voeg subtask toe aan bestaande taak (met optionele deadline/tijd)
@@ -3540,6 +3657,58 @@ const List: React.FC<ListScreenProps> = ({
         </Modal>
       )}
       {/* Header met title, taal en thema toggles */}
+      {recentlyDeleted ? (
+        <View
+          pointerEvents="box-none"
+          style={[
+            restoreBannerStyles.container,
+            {
+              bottom: restoreBannerBottom,
+              left: restoreBannerSides.left,
+              right: restoreBannerSides.right,
+            },
+          ]}
+        >
+          <View style={restoreBannerStyles.panel}>
+            <View style={restoreBannerStyles.textColumn}>
+              <Text style={restoreBannerStyles.title}>
+                {strings.restorePrompt}
+              </Text>
+              <Text style={restoreBannerStyles.subtitle} numberOfLines={2}>
+                {recentlyDeleted.todo.text}
+              </Text>
+              <Text style={restoreBannerStyles.hint}>
+                {strings.restoreHint}
+              </Text>
+            </View>
+            <View style={restoreBannerStyles.actions}>
+              <Pressable
+                onPress={dismissRecentlyDeleted}
+                style={({ pressed }) => [
+                  restoreBannerStyles.secondaryButton,
+                  pressed && restoreBannerStyles.buttonPressed,
+                ]}
+              >
+                <Text style={restoreBannerStyles.secondaryLabel}>
+                  {strings.cancel}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handleRestoreRecentlyDeleted}
+                style={({ pressed }) => [
+                  restoreBannerStyles.primaryButton,
+                  pressed && restoreBannerStyles.buttonPressed,
+                ]}
+              >
+                <Text style={restoreBannerStyles.primaryLabel}>
+                  {strings.restore}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
       <ListHeaderControls
         colors={colors}
         showArchive={showArchive}
@@ -4075,6 +4244,107 @@ const createWebToastStyles = (colors: ThemeColors, theme: "light" | "dark") => {
     error: {
       borderColor: palette.error,
       shadowColor: palette.error,
+    },
+  });
+};
+
+const createRestoreBannerStyles = (
+  colors: ThemeColors,
+  theme: "light" | "dark",
+) => {
+  const accent = colors.addButton;
+  const isLight = theme === "light";
+  const isWeb = Platform.OS === "web";
+
+  return StyleSheet.create({
+    container: {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      alignItems: "center",
+      zIndex: 20,
+    },
+    panel: {
+      width: "100%",
+      maxWidth: 520,
+      borderRadius: 20,
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+      backgroundColor: colors.formBackground,
+      flexDirection: isWeb ? "row" : "column",
+      alignItems: isWeb ? "center" : "flex-start",
+      shadowColor: "#000",
+      shadowOpacity: isLight ? 0.18 : 0.35,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 12 },
+      elevation: 12,
+    },
+    textColumn: {
+      flex: 1,
+      marginRight: isWeb ? 16 : 0,
+    },
+    title: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    subtitle: {
+      marginTop: 6,
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    hint: {
+      marginTop: 4,
+      fontSize: 13,
+      color: colors.placeholder,
+    },
+    actions: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: isWeb ? 0 : 16,
+      flexWrap: "wrap",
+      justifyContent: isWeb ? "flex-end" : "flex-start",
+    },
+    primaryButton: {
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderRadius: 14,
+      backgroundColor: accent,
+      shadowColor: accent,
+      shadowOpacity: isLight ? 0.3 : 0.4,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 6,
+      marginLeft: isWeb ? 12 : 0,
+      marginTop: isWeb ? 0 : 12,
+    },
+    primaryLabel: {
+      color: "#FFFFFF",
+      fontSize: 14,
+      fontWeight: "700",
+    },
+    secondaryButton: {
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderRadius: 14,
+      backgroundColor: isLight ? "#E6ECF7" : "#1F2734",
+      shadowColor: "#000",
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+      marginRight: isWeb ? 12 : 0,
+    },
+    secondaryLabel: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    buttonPressed: {
+      opacity: 0.86,
+      transform: [{ scale: 0.97 }],
     },
   });
 };

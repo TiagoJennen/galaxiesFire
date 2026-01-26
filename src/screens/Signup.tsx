@@ -15,9 +15,9 @@ import {
   StatusBar,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { FIREBASE_AUTH } from "../services/FirebaseConfig";
-import { signInWithEmailAndPassword } from "firebase/auth";
 import { useNavigation } from "@react-navigation/native";
+import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import { FIREBASE_AUTH } from "../services/FirebaseConfig";
 import { translations } from "../constants/translations";
 
 interface Props {
@@ -26,7 +26,8 @@ interface Props {
   language: "nl" | "en";
   toggleLanguage: () => void;
 }
-const Login: React.FC<Props> = ({
+
+const Signup: React.FC<Props> = ({
   theme,
   toggleTheme,
   language,
@@ -57,38 +58,34 @@ const Login: React.FC<Props> = ({
     return () => subscription?.remove();
   }, []);
 
-  const signIn = async () => {
+  const navigation = useNavigation<any>();
+
+  const signUp = async () => {
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(FIREBASE_AUTH, email, password);
-    } catch (error: any) {
-      const code = error?.code ?? "";
-      const invalidCredentialCodes = [
-        "auth/user-not-found",
-        "auth/wrong-password",
-        "auth/invalid-credential",
-        "auth/invalid-login-credentials",
-      ];
-      if (invalidCredentialCodes.includes(code)) {
-        alert(translations[language].invalidCredentials);
-      } else {
-        console.log("Firebase login error:", error);
-        alert(translations[language].loginFailed);
+      await createUserWithEmailAndPassword(FIREBASE_AUTH, email, password);
+      try {
+        await signOut(FIREBASE_AUTH);
+      } catch (error) {
+        console.log("Firebase signOut after signup failed:", error);
       }
+      alert(translations[language].checkMail);
+      setEmail("");
+      setPassword("");
+      navigation.navigate("Login");
+    } catch (error: any) {
+      alert(translations[language].signupFailed + " " + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const navigation = useNavigation<any>();
-
   const accentColor = "#0A84FF";
   const containerBackground = theme === "light" ? "#F4F6FB" : "#040608";
   const subtitleText =
     language === "nl"
-      ? "Welkom terug! Meld je aan."
-      : "Welcome back! Please sign in.";
-  const iconColor = theme === "light" ? "#5B636F" : "#A8B0C0";
+      ? "Maak een account om je taken overal te beheren."
+      : "Create an account to keep your tasks everywhere in sync.";
 
   const fadeIn = useRef(new Animated.Value(0)).current;
   const slideUp = useRef(new Animated.Value(24)).current;
@@ -123,6 +120,7 @@ const Login: React.FC<Props> = ({
   );
 
   const placeholderColor = theme === "light" ? "#8C95A3" : "#7D8494";
+  const iconColor = theme === "light" ? "#5B636F" : "#A8B0C0";
 
   const animatedIntro = {
     opacity: fadeIn,
@@ -145,7 +143,7 @@ const Login: React.FC<Props> = ({
               <View style={styles.logoInner} />
             </View>
             <Text style={styles.headerTitle}>
-              {translations[language].login}
+              {translations[language].signup}
             </Text>
             <Text style={styles.headerSubtitle}>{subtitleText}</Text>
             <View style={styles.headerControls}>
@@ -203,21 +201,30 @@ const Login: React.FC<Props> = ({
                 <ActivityIndicator size="small" color={accentColor} />
               </View>
             ) : (
-              <>
-                <AccentButton
-                  label={translations[language].login}
-                  onPress={signIn}
-                  variant="primary"
-                  styles={styles}
-                />
-                <AccentButton
-                  label={translations[language].goToSignup}
-                  onPress={() => navigation.navigate("Signup")}
-                  variant="secondary"
-                  styles={styles}
-                />
-              </>
+              <AccentButton
+                label={translations[language].signup}
+                onPress={signUp}
+                variant="primary"
+                styles={styles}
+              />
             )}
+
+            <View style={styles.switchAuthRow}>
+              <Text style={styles.switchAuthText}>
+                {translations[language].haveAccountPrompt}
+              </Text>
+              <Pressable
+                onPress={() => navigation.navigate("Login")}
+                style={({ pressed }) => [
+                  styles.switchAuthButton,
+                  pressed && styles.switchAuthButtonPressed,
+                ]}
+              >
+                <Text style={styles.switchAuthButtonLabel}>
+                  {translations[language].goToLogin}
+                </Text>
+              </Pressable>
+            </View>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -395,7 +402,6 @@ const createStyles = ({
       bottom: 0,
       justifyContent: "center",
       alignItems: "center",
-      color: theme === "light" ? "#5B636F" : "#A8B0C0",
     },
     inputIconButton: {
       padding: 6,
@@ -449,18 +455,45 @@ const createStyles = ({
       color: accentColor,
       letterSpacing: 0.4,
     },
+    switchAuthRow: {
+      marginTop: 28,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+    },
+    switchAuthText: {
+      fontSize: 13,
+      fontFamily: textFont,
+      color: theme === "light" ? "#5B6573" : "#A7B1C2",
+    },
+    switchAuthButton: {
+      paddingHorizontal: 6,
+      paddingVertical: 4,
+      borderRadius: 12,
+    },
+    switchAuthButtonPressed: {
+      opacity: 0.75,
+    },
+    switchAuthButtonLabel: {
+      fontSize: 13,
+      fontFamily: textFont,
+      fontWeight: "600",
+      color: accentColor,
+      letterSpacing: 0.2,
+    },
   });
 };
 
-type LoginStyles = ReturnType<typeof createStyles>;
+type SignupStyles = ReturnType<typeof createStyles>;
 
 type HeaderToggleButtonProps = {
   label: string;
   onPress: () => void;
-  styles: LoginStyles;
+  styles: SignupStyles;
 };
 
-// Herbruikbare knop voor header toggles (taal/thema) met visuele feedback.
 function HeaderToggleButton({
   label,
   onPress,
@@ -486,12 +519,11 @@ type InputFieldProps = {
   onChangeText: (text: string) => void;
   keyboardType?: "default" | "email-address";
   secureTextEntry?: boolean;
-  styles: LoginStyles;
+  styles: SignupStyles;
   placeholderColor: string;
   trailingIcon?: React.ReactNode;
 };
 
-// Invoercomponent die label en TextInput bundelt voor consistente styling.
 function InputField({
   label,
   value,
@@ -529,7 +561,7 @@ type AccentButtonProps = {
   label: string;
   onPress: () => void;
   variant?: "primary" | "secondary";
-  styles: LoginStyles;
+  styles: SignupStyles;
 };
 
 function AccentButton({
@@ -538,41 +570,18 @@ function AccentButton({
   variant = "primary",
   styles,
 }: AccentButtonProps) {
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const handlePressIn = () => {
-    Animated.spring(scale, {
-      toValue: 0.97,
-      useNativeDriver: true,
-      speed: 15,
-      bounciness: 8,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scale, {
-      toValue: 1,
-      useNativeDriver: true,
-      speed: 15,
-      bounciness: 8,
-    }).start();
-  };
-
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       style={({ pressed }) => [
         styles.buttonWrapper,
         pressed && styles.buttonWrapperPressed,
       ]}
     >
-      <Animated.View
+      <View
         style={[
           styles.buttonBase,
           variant === "primary" ? styles.buttonPrimary : styles.buttonSecondary,
-          { transform: [{ scale }] },
         ]}
       >
         <Text
@@ -584,9 +593,9 @@ function AccentButton({
         >
           {label}
         </Text>
-      </Animated.View>
+      </View>
     </Pressable>
   );
 }
 
-export default Login;
+export default Signup;

@@ -28,13 +28,13 @@ export interface ArchivedTodoListProps {
   formatDate: (value?: string | null) => string;
   getLocationDisplay: (
     location: Todo["location"],
-    description?: string | null
+    description?: string | null,
   ) => string;
   toggleTodo: (index: number, source?: ListSource) => void;
   openLocationPicker: (
     todoIndex?: number,
     source?: ListSource,
-    subtaskIndex?: number | null
+    subtaskIndex?: number | null,
   ) => void;
   openArchivedLocation: (location: LatLng, description?: string | null) => void;
   pickImage: (
@@ -42,7 +42,7 @@ export interface ArchivedTodoListProps {
     todoIndex?: number,
     subIndex?: number,
     isArchive?: boolean,
-    fromGallery?: boolean
+    fromGallery?: boolean,
   ) => void;
   openTodoEditor: (index: number, source?: ListSource) => void;
   unarchiveTodo: (index: number) => void;
@@ -50,17 +50,17 @@ export interface ArchivedTodoListProps {
   toggleSubtask: (
     todoIndex: number,
     subIndex: number,
-    source?: ListSource
+    source?: ListSource,
   ) => void;
   openSubtaskEditor: (
     todoIndex: number,
     subIndex: number,
-    source?: ListSource
+    source?: ListSource,
   ) => void;
   removeSubtask: (
     todoIndex: number,
     subIndex: number,
-    source?: ListSource
+    source?: ListSource,
   ) => void;
   beginInlineSubtaskCreation: (todoIndex: number, source: ListSource) => void;
   listRef?: React.MutableRefObject<FlashListRef<DisplayTodo> | null>;
@@ -92,10 +92,21 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
   // Herbereken stijlen enkel bij thema- of kleurwissel.
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   const accent = colors.addButton;
+  const priorityLabelMap = useMemo(() => {
+    const fallback =
+      language === "nl"
+        ? { high: "Hoog", medium: "Gemiddeld", low: "Laag" }
+        : { high: "High", medium: "Medium", low: "Low" };
+
+    return {
+      high: (strings.priorityHigh ?? fallback.high).toUpperCase(),
+      medium: (strings.priorityMedium ?? fallback.medium).toUpperCase(),
+      low: (strings.priorityLow ?? fallback.low).toUpperCase(),
+    } as const;
+  }, [language, strings]);
   const addedLabel =
     (strings as any).added ?? (language === "nl" ? "Toegevoegd" : "Added");
   const isWeb = Platform.OS === "web";
-  // Web krijgt extra margin/padding zodat scrollbars mooi uitkomen.
   const listStyle = isWeb ? [styles.list, styles.listWeb] : styles.list;
   const listContentStyle = isWeb
     ? [styles.listContent, styles.listContentWeb]
@@ -107,7 +118,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
       ref={listRef ?? undefined}
       data={displayTodos}
       keyExtractor={(entry) => `arch-${entry.originalIndex}`}
-      estimatedItemSize={340}
+      estimatedItemSize={320}
       style={listStyle}
       contentContainerStyle={listContentStyle}
       renderItem={({ item: entry }) => {
@@ -127,6 +138,10 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
           deadlineTime < startOfTomorrow.getTime();
         const isDeadlineOverdue = deadlineTime !== null && deadlineTime < now;
         const highlightDeadline = isDeadlineOverdue || isDeadlineToday;
+        const priorityText = item.priority
+          ? (priorityLabelMap[item.priority as keyof typeof priorityLabelMap] ??
+            item.priority.toUpperCase())
+          : null;
 
         return (
           <View style={styles.card}>
@@ -149,7 +164,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
               </Pressable>
 
               <View style={styles.titleSection}>
-                {item.priority ? (
+                {priorityText ? (
                   <View
                     style={[
                       styles.priorityPill,
@@ -160,9 +175,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                           : styles.priorityLow,
                     ]}
                   >
-                    <Text style={styles.priorityText}>
-                      {item.priority.toUpperCase()}
-                    </Text>
+                    <Text style={styles.priorityText}>{priorityText}</Text>
                   </View>
                 ) : null}
 
@@ -212,9 +225,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
               <View style={styles.iconCluster}>
                 <Pressable
                   onPress={() => openTodoEditor(originalIndex, ARCHIVE_SOURCE)}
-                  accessibilityLabel={
-                    language === "nl" ? "Taak bewerken" : "Edit task"
-                  }
+                  accessibilityLabel={strings.editTask}
                   accessibilityHint={
                     language === "nl"
                       ? "Pas titel, deadline, foto of locatie van deze taak aan."
@@ -229,6 +240,12 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                 </Pressable>
                 <Pressable
                   onPress={() => unarchiveTodo(originalIndex)}
+                  accessibilityLabel={strings.restoreTask}
+                  accessibilityHint={
+                    language === "nl"
+                      ? "Zet deze taak terug naar je actieve lijst."
+                      : "Return this task to the active list."
+                  }
                   style={({ pressed }) => [
                     styles.iconButton,
                     pressed && styles.iconButtonPressed,
@@ -238,6 +255,12 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                 </Pressable>
                 <Pressable
                   onPress={() => removeArchivedTodo(originalIndex)}
+                  accessibilityLabel={strings.deleteTask}
+                  accessibilityHint={
+                    language === "nl"
+                      ? "Verwijder deze taak definitief uit het archief."
+                      : "Delete this task permanently from the archive."
+                  }
                   style={({ pressed }) => [
                     styles.iconButton,
                     pressed && styles.iconButtonPressed,
@@ -257,7 +280,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                 onPress={() =>
                   openArchivedLocation(
                     item.location as LatLng,
-                    item.locationDescription ?? null
+                    item.locationDescription ?? null,
                   )
                 }
                 accessibilityRole="button"
@@ -281,7 +304,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                   {strings.locationLabel}:{" "}
                   {getLocationDisplay(
                     item.location,
-                    item.locationDescription ?? null
+                    item.locationDescription ?? null,
                   )}
                 </Text>
               </Pressable>
@@ -345,6 +368,11 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                   (subDeadlineTime !== null &&
                     subDeadlineTime >= startOfToday.getTime() &&
                     subDeadlineTime < startOfTomorrow.getTime());
+                const subtaskPriorityText = sub.priority
+                  ? (priorityLabelMap[
+                      sub.priority as keyof typeof priorityLabelMap
+                    ] ?? sub.priority.toUpperCase())
+                  : null;
 
                 return (
                   <View
@@ -371,7 +399,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                     </Pressable>
 
                     <View style={styles.subtaskContent}>
-                      {sub.priority ? (
+                      {subtaskPriorityText && (
                         <View
                           style={[
                             styles.subtaskPriority,
@@ -383,10 +411,10 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                           ]}
                         >
                           <Text style={styles.subtaskPriorityText}>
-                            {sub.priority.toUpperCase()}
+                            {subtaskPriorityText}
                           </Text>
                         </View>
-                      ) : null}
+                      )}
 
                       <Text
                         style={[
@@ -439,7 +467,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                             openLocationPicker(
                               originalIndex,
                               ARCHIVE_SOURCE,
-                              subIndex
+                              subIndex,
                             )
                           }
                           accessibilityRole="button"
@@ -463,7 +491,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                             {strings.locationLabel}:{" "}
                             {getLocationDisplay(
                               sub.location,
-                              sub.locationDescription ?? null
+                              sub.locationDescription ?? null,
                             )}
                           </Text>
                         </Pressable>
@@ -524,7 +552,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                           openSubtaskEditor(
                             originalIndex,
                             subIndex,
-                            ARCHIVE_SOURCE
+                            ARCHIVE_SOURCE,
                           )
                         }
                         accessibilityLabel={
@@ -566,7 +594,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                     </View>
                   </View>
                 );
-              }
+              },
             )}
 
             <Pressable
@@ -632,10 +660,10 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       borderRadius: 24,
       backgroundColor: colors.formBackground,
       shadowColor: "#000000",
-      shadowOpacity: isLight ? 0.08 : 0.32,
-      shadowRadius: 28,
+      shadowOpacity: isLight ? 0.12 : 0.35,
+      shadowRadius: 30,
       shadowOffset: { width: 0, height: 18 },
-      elevation: isLight ? 9 : 12,
+      elevation: isLight ? 10 : 14,
       width: "100%",
     },
     cardHeader: {

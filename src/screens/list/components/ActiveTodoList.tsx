@@ -26,20 +26,20 @@ type ActiveTodoListProps = {
   formatDate: (value?: string | null) => string;
   getLocationDisplay: (
     location: Todo["location"],
-    description?: string | null
+    description?: string | null,
   ) => string;
   toggleTodo: (index: number, source?: ListSource) => void;
   openLocationPicker: (
     todoIndex?: number,
     source?: ListSource,
-    subtaskIndex?: number | null
+    subtaskIndex?: number | null,
   ) => void;
   pickImage: (
     forSubtask?: boolean,
     todoIndex?: number,
     subIndex?: number,
     isArchive?: boolean,
-    fromGallery?: boolean
+    fromGallery?: boolean,
   ) => void;
   openTodoEditor: (index: number, source?: ListSource) => void;
   archiveTodo: (index: number) => void;
@@ -47,17 +47,17 @@ type ActiveTodoListProps = {
   toggleSubtask: (
     todoIndex: number,
     subIndex: number,
-    source?: ListSource
+    source?: ListSource,
   ) => void;
   openSubtaskEditor: (
     todoIndex: number,
     subIndex: number,
-    source?: ListSource
+    source?: ListSource,
   ) => void;
   removeSubtask: (
     todoIndex: number,
     subIndex: number,
-    source?: ListSource
+    source?: ListSource,
   ) => void;
   beginInlineSubtaskCreation: (todoIndex: number, source: ListSource) => void;
   listRef?: React.MutableRefObject<FlashListRef<DisplayTodo> | null>;
@@ -88,6 +88,18 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
   // Genereer thema-afhankelijke stijlen zodat light/dark consistent blijft.
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   const accent = colors.addButton;
+  const priorityLabelMap = useMemo(() => {
+    const fallback =
+      language === "nl"
+        ? { high: "Hoog", medium: "Gemiddeld", low: "Laag" }
+        : { high: "High", medium: "Medium", low: "Low" };
+
+    return {
+      high: (strings.priorityHigh ?? fallback.high).toUpperCase(),
+      medium: (strings.priorityMedium ?? fallback.medium).toUpperCase(),
+      low: (strings.priorityLow ?? fallback.low).toUpperCase(),
+    } as const;
+  }, [language, strings]);
 
   const isWeb = Platform.OS === "web";
   const listStyle = isWeb ? [styles.list, styles.listWeb] : styles.list;
@@ -125,6 +137,10 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
         const addedLabel =
           (strings as any).added ??
           (language === "nl" ? "Toegevoegd" : "Added");
+        const priorityText = item.priority
+          ? (priorityLabelMap[item.priority as keyof typeof priorityLabelMap] ??
+            item.priority.toUpperCase())
+          : null;
 
         return (
           <View style={styles.card}>
@@ -146,7 +162,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                 />
               </Pressable>
               <View style={styles.titleSection}>
-                {item.priority ? (
+                {priorityText ? (
                   <View
                     style={[
                       styles.priorityPill,
@@ -157,9 +173,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                           : styles.priorityLow,
                     ]}
                   >
-                    <Text style={styles.priorityText}>
-                      {item.priority.toUpperCase()}
-                    </Text>
+                    <Text style={styles.priorityText}>{priorityText}</Text>
                   </View>
                 ) : null}
                 <Text
@@ -273,7 +287,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                   {strings.locationLabel}:{" "}
                   {getLocationDisplay(
                     item.location,
-                    item.locationDescription ?? null
+                    item.locationDescription ?? null,
                   )}
                 </Text>
               </Pressable>
@@ -337,6 +351,11 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                   (subDeadlineTime !== null &&
                     subDeadlineTime >= startOfToday.getTime() &&
                     subDeadlineTime < startOfTomorrow.getTime());
+                const subtaskPriorityText = sub.priority
+                  ? (priorityLabelMap[
+                      sub.priority as keyof typeof priorityLabelMap
+                    ] ?? sub.priority.toUpperCase())
+                  : null;
 
                 return (
                   <View
@@ -360,7 +379,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                       />
                     </Pressable>
                     <View style={styles.subtaskContent}>
-                      {sub.priority && (
+                      {subtaskPriorityText && (
                         <View
                           style={[
                             styles.subtaskPriority,
@@ -372,7 +391,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                           ]}
                         >
                           <Text style={styles.subtaskPriorityText}>
-                            {sub.priority.toUpperCase()}
+                            {subtaskPriorityText}
                           </Text>
                         </View>
                       )}
@@ -424,7 +443,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                             openLocationPicker(
                               originalIndex,
                               "active",
-                              subIndex
+                              subIndex,
                             )
                           }
                           accessibilityRole="button"
@@ -448,7 +467,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                             {strings.locationLabel}:{" "}
                             {getLocationDisplay(
                               sub.location,
-                              sub.locationDescription ?? null
+                              sub.locationDescription ?? null,
                             )}
                           </Text>
                         </Pressable>
@@ -486,7 +505,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                               originalIndex,
                               subIndex,
                               false,
-                              true
+                              true,
                             )
                           }
                           style={({ pressed }) => [
@@ -550,7 +569,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                     </View>
                   </View>
                 );
-              }
+              },
             )}
 
             <Pressable

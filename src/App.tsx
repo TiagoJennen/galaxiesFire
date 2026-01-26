@@ -3,6 +3,7 @@ import { useColorScheme } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Login from "./screens/Login";
+import Signup from "./screens/Signup";
 import List from "./screens/List";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { FIREBASE_AUTH } from "./services/FirebaseConfig";
@@ -11,6 +12,7 @@ import { StatusBar } from "expo-status-bar";
 type RootStackParamList = {
   Inside: undefined;
   Login: undefined;
+  Signup: undefined;
 };
 
 type InsideStackParamList = {
@@ -123,16 +125,28 @@ export default function App() {
               )}
             </Stack.Screen>
           ) : (
-            <Stack.Screen name="Login" options={{ headerShown: false }}>
-              {() => (
-                <Login
-                  theme={theme}
-                  toggleTheme={toggleTheme}
-                  language={language}
-                  toggleLanguage={toggleLanguage}
-                />
-              )}
-            </Stack.Screen>
+            <>
+              <Stack.Screen name="Login" options={{ headerShown: false }}>
+                {() => (
+                  <Login
+                    theme={theme}
+                    toggleTheme={toggleTheme}
+                    language={language}
+                    toggleLanguage={toggleLanguage}
+                  />
+                )}
+              </Stack.Screen>
+              <Stack.Screen name="Signup" options={{ headerShown: false }}>
+                {() => (
+                  <Signup
+                    theme={theme}
+                    toggleTheme={toggleTheme}
+                    language={language}
+                    toggleLanguage={toggleLanguage}
+                  />
+                )}
+              </Stack.Screen>
+            </>
           )}
         </Stack.Navigator>
       </NavigationContainer>
