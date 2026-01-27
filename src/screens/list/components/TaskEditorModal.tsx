@@ -165,6 +165,7 @@ export const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
     <Modal
       transparent
       animationType="fade"
+      supportedOrientations={["portrait", "landscape-left", "landscape-right"]}
       visible={visible}
       onRequestClose={onClose}
     >

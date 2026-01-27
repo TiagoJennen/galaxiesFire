@@ -27,6 +27,7 @@ type ListHeaderControlsProps = {
   currentDateLabel: string;
   onGoToPreviousDay: () => void;
   onGoToNextDay: () => void;
+  isLandscape?: boolean;
 };
 
 // Hoofdscherm-header met taal-, thema-, sorteer- en navigatieknoppen.
@@ -53,10 +54,11 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
   currentDateLabel,
   onGoToPreviousDay,
   onGoToNextDay,
+  isLandscape = false,
 }) => {
   const styles = useMemo(
-    () => createStyles({ colors, theme }),
-    [colors, theme]
+    () => createStyles({ colors, theme, isLandscape }),
+    [colors, theme, isLandscape],
   );
   const isWeb = Platform.OS === "web";
   const accent = colors.addButton;
@@ -134,11 +136,6 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
   const controlRowStyles = [
     styles.controlRow,
     !hasHeading && styles.controlRowCentered,
-  ];
-  const primaryButtonsRowStyles = [
-    styles.primaryButtonsRow,
-    !hasHeading && styles.primaryButtonsRowCentered,
-    !showAddButton && styles.primaryButtonsRowNoAdd,
   ];
   const dateSwitcherStyles = [
     styles.dateSwitcher,
@@ -228,27 +225,6 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
         ) : null}
 
         <View style={actionsColumnStyles}>
-          <View style={primaryButtonsRowStyles}>
-            {showAddButton ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={addTaskLabel}
-                accessibilityHint={addTaskHint}
-                onPress={onAddTask}
-                hitSlop={6}
-                style={({ pressed }) => [
-                  styles.addButton,
-                  pressed && styles.addButtonPressed,
-                ]}
-              >
-                <Ionicons name="add" size={20} color="#FFFFFF" />
-                <Text style={styles.addButtonLabel}>
-                  {language === "nl" ? "Nieuwe hoofdtaak" : "New main task"}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-
           {!isWeb ? (
             <View style={controlRowStyles}>
               <ControlButton
@@ -353,6 +329,27 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
           </Text>
         </Pressable>
       </View>
+
+      {showAddButton ? (
+        <View style={styles.bottomActionRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={addTaskLabel}
+            accessibilityHint={addTaskHint}
+            onPress={onAddTask}
+            hitSlop={6}
+            style={({ pressed }) => [
+              styles.addButton,
+              pressed && styles.addButtonPressed,
+            ]}
+          >
+            <Ionicons name="add" size={20} color="#FFFFFF" />
+            <Text style={styles.addButtonLabel}>
+              {language === "nl" ? "Nieuwe hoofdtaak" : "New main task"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -362,9 +359,11 @@ export default ListHeaderControls;
 const createStyles = ({
   colors,
   theme,
+  isLandscape,
 }: {
   colors: ThemeColors;
   theme: "light" | "dark";
+  isLandscape: boolean;
 }) => {
   const accent = colors.addButton;
   const logoutAccent = colors.logoutButton;
@@ -383,66 +382,50 @@ const createStyles = ({
 
   return StyleSheet.create({
     wrapper: {
-      marginBottom: 28,
+      marginBottom: isLandscape ? 18 : 28,
     },
     headingRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
-    },
-    headingRowNoTitle: {
+      flexDirection: "column",
       justifyContent: "center",
       alignItems: "center",
-      paddingTop: 12,
+      marginTop: isLandscape ? 0 : -12,
+    },
+    headingRowNoTitle: {
+      paddingTop: isLandscape ? 2 : 8,
     },
     headingCopy: {
-      flex: 1,
-      marginRight: 16,
+      alignItems: "center",
+      alignSelf: "center",
+      marginBottom: isLandscape ? 10 : 6,
+      paddingHorizontal: 8,
+      width: "100%",
+      maxWidth: 520,
     },
     title: {
       fontSize: 32,
       color: colors.text,
       fontFamily: titleFont,
       letterSpacing: 0.2,
+      textAlign: "center",
     },
     subtitle: {
       marginTop: 6,
       fontSize: 15,
       color: isLight ? "#6E7686" : "#98A3B7",
       fontFamily: bodyFont,
+      textAlign: "center",
     },
     actionsColumn: {
-      flex: 1,
-      alignItems: "flex-end",
-      justifyContent: "flex-start",
+      width: "100%",
+      maxWidth: 520,
+      alignItems: "center",
+      justifyContent: "center",
+      alignSelf: "center",
+      marginTop: isLandscape ? 4 : 4,
       position: "relative",
     },
     actionsColumnCentered: {
-      alignItems: "center",
-      alignSelf: "center",
-      width: "100%",
-      maxWidth: 520,
-      marginTop: 20,
-    },
-    primaryButtonsRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      alignSelf: "stretch",
-      width: "100%",
-      marginTop: 4,
-      marginBottom: 12,
-      flexWrap: "wrap",
-      position: "relative",
-    },
-    primaryButtonsRowCentered: {
-      justifyContent: "center",
-    },
-    primaryButtonsRowNoAdd: {
-      justifyContent: "flex-end",
-      marginTop: 0,
-      marginBottom: 0,
-      alignSelf: "stretch",
+      marginTop: isLandscape ? 0 : 2,
     },
     addButton: {
       flexDirection: "row",
@@ -470,12 +453,21 @@ const createStyles = ({
       letterSpacing: 0.3,
       color: "#FFFFFF",
     },
+    bottomActionRow: {
+      marginTop: isWeb ? 14 : isLandscape ? 10 : 12,
+      alignItems: "center",
+      justifyContent: "center",
+      width: "100%",
+      maxWidth: 520,
+      alignSelf: "center",
+      paddingHorizontal: 12,
+    },
     topControlRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "flex-end",
+      justifyContent: "center",
       flexWrap: isWeb ? "nowrap" : "wrap",
-      marginBottom: 16,
+      marginBottom: isLandscape ? 12 : 16,
       alignSelf: "stretch",
     },
     topControlRowCentered: {
@@ -484,7 +476,9 @@ const createStyles = ({
     controlRow: {
       flexDirection: "row",
       alignItems: "center",
-      marginTop: 16,
+      justifyContent: "center",
+      flexWrap: "wrap",
+      marginTop: isLandscape ? 8 : 8,
     },
     controlRowCentered: {
       justifyContent: "center",
@@ -496,7 +490,7 @@ const createStyles = ({
       justifyContent: "center",
       borderRadius: 16,
       paddingHorizontal: 14,
-      paddingVertical: 10,
+      paddingVertical: isLandscape ? 8 : 10,
       backgroundColor: isLight ? "#FFFFFF" : "#1A202C",
       shadowColor: "#000",
       shadowOpacity: isLight ? 0.08 : 0.28,
@@ -504,7 +498,7 @@ const createStyles = ({
       shadowOffset: { width: 0, height: 8 },
       elevation: 6,
       marginHorizontal: 6,
-      marginVertical: 6,
+      marginVertical: isLandscape ? 4 : 6,
     },
     controlButtonPressed: {
       transform: [{ scale: 0.97 }],
@@ -524,7 +518,7 @@ const createStyles = ({
       marginRight: 0,
     },
     dateSwitcher: {
-      marginTop: isWeb ? -14 : 20,
+      marginTop: isWeb ? (isLandscape ? -8 : -8) : isLandscape ? 6 : 8,
       flexDirection: "row",
       alignItems: "center",
       alignSelf: "stretch",
@@ -557,7 +551,7 @@ const createStyles = ({
       width: 44,
       alignItems: "center",
       justifyContent: "center",
-      marginTop: isWeb ? -8 : 0,
+      marginTop: isWeb ? (isLandscape ? -4 : -8) : 0,
     },
     dateLabelContainer: {
       flex: 1,
@@ -566,7 +560,7 @@ const createStyles = ({
       justifyContent: "center",
       paddingHorizontal: 8,
       flexDirection: "row",
-      marginTop: isWeb ? -8 : 0,
+      marginTop: isWeb ? (isLandscape ? -4 : -8) : 0,
     },
     dateLabel: {
       fontFamily: titleFont,
@@ -579,7 +573,7 @@ const createStyles = ({
       minWidth: 0,
     },
     segmentedControl: {
-      marginTop: isWeb ? 16 : 20,
+      marginTop: isWeb ? 10 : isLandscape ? 6 : 10,
       flexDirection: "row",
       backgroundColor: isLight ? "#F0F2F8" : "#131B2B",
       borderRadius: 18,
@@ -595,7 +589,7 @@ const createStyles = ({
     },
     segmentButton: {
       flex: 1,
-      paddingVertical: isWeb ? 14 : 10,
+      paddingVertical: isWeb ? 14 : isLandscape ? 8 : 10,
       paddingHorizontal: isWeb ? 16 : 8,
       borderRadius: 14,
       alignItems: "center",

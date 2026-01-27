@@ -104,6 +104,7 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
       animationType="fade"
       presentationStyle="overFullScreen"
       statusBarTranslucent
+      supportedOrientations={["portrait", "landscape-left", "landscape-right"]}
       visible={shouldRenderPrimaryModal}
       onRequestClose={onClose}
     >

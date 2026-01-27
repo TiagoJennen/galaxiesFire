@@ -61,6 +61,7 @@ type ActiveTodoListProps = {
   ) => void;
   beginInlineSubtaskCreation: (todoIndex: number, source: ListSource) => void;
   listRef?: React.MutableRefObject<FlashListRef<DisplayTodo> | null>;
+  contentBottomPadding?: number;
 };
 
 // Lijstweergave voor actieve taken met subtaken, media-acties en snelle bewerkingen.
@@ -84,6 +85,7 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
   removeSubtask,
   beginInlineSubtaskCreation,
   listRef,
+  contentBottomPadding = 160,
 }) => {
   // Genereer thema-afhankelijke stijlen zodat light/dark consistent blijft.
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
@@ -103,9 +105,13 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
 
   const isWeb = Platform.OS === "web";
   const listStyle = isWeb ? [styles.list, styles.listWeb] : styles.list;
+  const contentPaddingStyle = useMemo(
+    () => ({ paddingBottom: contentBottomPadding }),
+    [contentBottomPadding],
+  );
   const listContentStyle = isWeb
-    ? [styles.listContent, styles.listContentWeb]
-    : styles.listContent;
+    ? [styles.listContent, contentPaddingStyle, styles.listContentWeb]
+    : [styles.listContent, contentPaddingStyle];
 
   // FlashList zorgt voor performant scrollen, ook wanneer elke kaart veel interacties bevat.
   return (

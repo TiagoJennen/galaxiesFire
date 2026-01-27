@@ -64,6 +64,7 @@ export interface ArchivedTodoListProps {
   ) => void;
   beginInlineSubtaskCreation: (todoIndex: number, source: ListSource) => void;
   listRef?: React.MutableRefObject<FlashListRef<DisplayTodo> | null>;
+  contentBottomPadding?: number;
 }
 
 // Weergave voor gearchiveerde taken met dezelfde kaartstructuur als actief, maar andere acties.
@@ -88,6 +89,7 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
   removeSubtask,
   beginInlineSubtaskCreation,
   listRef,
+  contentBottomPadding = 160,
 }) => {
   // Herbereken stijlen enkel bij thema- of kleurwissel.
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
@@ -108,9 +110,13 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
     (strings as any).added ?? (language === "nl" ? "Toegevoegd" : "Added");
   const isWeb = Platform.OS === "web";
   const listStyle = isWeb ? [styles.list, styles.listWeb] : styles.list;
+  const contentPaddingStyle = useMemo(
+    () => ({ paddingBottom: contentBottomPadding }),
+    [contentBottomPadding],
+  );
   const listContentStyle = isWeb
-    ? [styles.listContent, styles.listContentWeb]
-    : styles.listContent;
+    ? [styles.listContent, contentPaddingStyle, styles.listContentWeb]
+    : [styles.listContent, contentPaddingStyle];
 
   // FlashList maakt het mogelijk om grote archieven toch vloeiend te scrollen.
   return (

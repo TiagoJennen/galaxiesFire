@@ -18,6 +18,7 @@ import {
   ToastAndroid,
   StyleSheet,
   Keyboard,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker, {
@@ -116,6 +117,8 @@ const List: React.FC<ListScreenProps> = ({
 }) => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isLandscape = windowWidth > windowHeight;
   const isIOS = Platform.OS === "ios";
   const [task, setTask] = useState("");
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -381,6 +384,18 @@ const List: React.FC<ListScreenProps> = ({
     language === "nl"
       ? "Open het formulier om een hoofdtaak te maken."
       : "Open the form to create a main task.";
+
+  const fabBottomOffset = insets.bottom + (isLandscape ? 12 : 24);
+  const containerPaddingHorizontal = isLandscape ? 16 : 20;
+  const containerPaddingTop = Math.max(
+    insets.top + (isLandscape ? 6 : 16),
+    isLandscape ? 12 : 24,
+  );
+  const containerPaddingBottom = Math.max(
+    fabBottomOffset + (isLandscape ? 32 : 96),
+    insets.bottom + (isLandscape ? 48 : 120),
+  );
+  const listBottomPadding = fabBottomOffset + (isLandscape ? 72 : 140);
 
   const shiftSelectedDay = useCallback((delta: number) => {
     setSelectedDay((current) => {
@@ -3461,9 +3476,9 @@ const List: React.FC<ListScreenProps> = ({
       style={{
         flex: 1,
         backgroundColor: colors.background,
-        paddingHorizontal: 20,
-        paddingTop: 20,
-        paddingBottom: 120,
+        paddingHorizontal: containerPaddingHorizontal,
+        paddingTop: containerPaddingTop,
+        paddingBottom: containerPaddingBottom,
       }}
     >
       {Platform.OS === "web" && webToasts.length > 0 && (
@@ -3730,6 +3745,7 @@ const List: React.FC<ListScreenProps> = ({
         currentDateLabel={selectedDayLabel}
         onGoToPreviousDay={goToPreviousDay}
         onGoToNextDay={goToNextDay}
+        isLandscape={isLandscape}
       />
 
       <LocationModal
@@ -4009,6 +4025,7 @@ const List: React.FC<ListScreenProps> = ({
             removeSubtask={removeSubtask}
             beginInlineSubtaskCreation={beginInlineSubtaskCreation}
             listRef={activeListRef}
+            contentBottomPadding={listBottomPadding}
           />
         </>
       ) : (
@@ -4070,6 +4087,7 @@ const List: React.FC<ListScreenProps> = ({
             removeSubtask={removeSubtask}
             beginInlineSubtaskCreation={beginInlineSubtaskCreation}
             listRef={archivedListRef}
+            contentBottomPadding={listBottomPadding}
           />
         </>
       )}
@@ -4083,6 +4101,7 @@ const List: React.FC<ListScreenProps> = ({
         style={({ pressed }) => [
           floatingAddStyles.fab,
           pressed && floatingAddStyles.fabPressed,
+          { bottom: fabBottomOffset },
         ]}
       >
         <Ionicons
