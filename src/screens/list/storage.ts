@@ -6,6 +6,7 @@ const FIRESTORE_DB = getFirestore();
 // Normaliseer zodat Firestore geen undefined veldwaarden ziet en schema consistent blijft.
 const normalizeTodo = (todo: Todo): Todo => ({
   ...todo,
+  description: todo.description ?? "",
   deadline: todo.deadline || null,
   createdAt: todo.createdAt || null,
   priority: todo.priority || null,
@@ -15,6 +16,7 @@ const normalizeTodo = (todo: Todo): Todo => ({
   // Subtaken ook normaliseren zodat Firestore geen undefined waarden krijgt
   subtasks: todo.subtasks.map((sub) => ({
     ...sub,
+    description: sub.description ?? "",
     deadline: sub.deadline || null,
     createdAt: sub.createdAt || null,
     image: sub.image || null,
@@ -27,7 +29,7 @@ const normalizeTodo = (todo: Todo): Todo => ({
 export const saveTodosFirebase = async (
   userId: string,
   todosData: Todo[],
-  archivedData: Todo[]
+  archivedData: Todo[],
 ) => {
   try {
     // Voorkomen dat undefined waarden worden opgeslagen

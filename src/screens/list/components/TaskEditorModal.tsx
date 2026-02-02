@@ -24,6 +24,8 @@ import type { TaskPriority } from "./TaskCreator";
 type TaskStrings = {
   editTask: string;
   taskName: string;
+  taskDescription: string;
+  taskDescriptionPlaceholder: string;
   deadline: string;
   clearDeadline: string;
   deadlineOverdue: string;
@@ -50,6 +52,8 @@ type TaskEditorModalProps = {
   theme: "light" | "dark";
   taskText: string;
   onChangeText: (text: string) => void;
+  taskDescription: string;
+  onChangeDescription: (text: string) => void;
   onOpenDate: () => void;
   onOpenTime: () => void;
   onClearDeadline: () => void;
@@ -91,6 +95,8 @@ export const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
   theme,
   taskText,
   onChangeText,
+  taskDescription,
+  onChangeDescription,
   onOpenDate,
   onOpenTime,
   onClearDeadline,
@@ -230,6 +236,18 @@ export const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
                   placeholder={strings.taskName}
                   placeholderTextColor={colors.placeholder}
                   style={styles.input}
+                />
+                <Text style={styles.descriptionLabel}>
+                  {strings.taskDescription}
+                </Text>
+                <TextInput
+                  value={taskDescription}
+                  onChangeText={onChangeDescription}
+                  placeholder={strings.taskDescriptionPlaceholder}
+                  placeholderTextColor={colors.placeholder}
+                  style={[styles.input, styles.descriptionInput]}
+                  multiline
+                  textAlignVertical="top"
                 />
               </View>
 
@@ -729,6 +747,16 @@ const createStyles = (
       borderWidth: 1,
       borderColor: isLight ? "#E2E7F1" : "#252D3D",
       fontSize: 15,
+    },
+    descriptionLabel: {
+      marginTop: 16,
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    descriptionInput: {
+      marginTop: 10,
+      minHeight: 110,
     },
     actionRow: {
       flexDirection: "row",

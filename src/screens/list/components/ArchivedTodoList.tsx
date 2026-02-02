@@ -148,6 +148,8 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
           ? (priorityLabelMap[item.priority as keyof typeof priorityLabelMap] ??
             item.priority.toUpperCase())
           : null;
+        const taskDescription = item.description?.trim() ?? "";
+        const showTaskDescription = taskDescription.length > 0;
 
         return (
           <View style={styles.card}>
@@ -191,6 +193,17 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                 >
                   {item.text}
                 </Text>
+                {showTaskDescription ? (
+                  <Text
+                    style={[
+                      styles.taskDescription,
+                      item.done && styles.taskDescriptionDone,
+                    ]}
+                    numberOfLines={3}
+                  >
+                    {taskDescription}
+                  </Text>
+                ) : null}
 
                 <View style={styles.metaRow}>
                   {item.createdAt ? (
@@ -379,6 +392,8 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                       sub.priority as keyof typeof priorityLabelMap
                     ] ?? sub.priority.toUpperCase())
                   : null;
+                const subtaskDescription = sub.description?.trim() ?? "";
+                const showSubtaskDescription = subtaskDescription.length > 0;
 
                 return (
                   <View
@@ -431,6 +446,17 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                       >
                         {sub.text}
                       </Text>
+                      {showSubtaskDescription ? (
+                        <Text
+                          style={[
+                            styles.subtaskDescription,
+                            sub.done && styles.subtaskDescriptionDone,
+                          ]}
+                          numberOfLines={3}
+                        >
+                          {subtaskDescription}
+                        </Text>
+                      ) : null}
 
                       <View style={styles.metaRow}>
                         {sub.createdAt ? (
@@ -741,6 +767,17 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       color: colors.doneText,
       textDecorationLine: "line-through",
     },
+    taskDescription: {
+      marginTop: 6,
+      color: isLight ? "#4F5C72" : "#C2CADB",
+      fontFamily: baseFont,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    taskDescriptionDone: {
+      color: colors.doneText,
+      textDecorationLine: "line-through",
+    },
     metaRow: {
       marginTop: 10,
     },
@@ -907,6 +944,17 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       lineHeight: 22,
     },
     subtaskTextDone: {
+      color: colors.doneText,
+      textDecorationLine: "line-through",
+    },
+    subtaskDescription: {
+      marginTop: 6,
+      color: isLight ? "#5A667A" : "#AEB7C9",
+      fontFamily: baseFont,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    subtaskDescriptionDone: {
       color: colors.doneText,
       textDecorationLine: "line-through",
     },

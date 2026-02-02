@@ -23,6 +23,8 @@ import type { SubTodo, LatLng } from "../types";
 export type SubtaskStrings = {
   editSubtask: string;
   subtaskName: string;
+  subtaskDescription: string;
+  subtaskDescriptionPlaceholder: string;
   deadline: string;
   clearDeadline: string;
   noDeadline: string;
@@ -45,6 +47,8 @@ export type SubtaskEditorModalProps = {
   theme: "light" | "dark";
   subtaskText: string;
   onChangeText: (text: string) => void;
+  subtaskDescription: string;
+  onChangeDescription: (text: string) => void;
   onOpenDate: () => void;
   onOpenTime: () => void;
   onClearDeadline: () => void;
@@ -75,6 +79,8 @@ export default function SubtaskEditorModal({
   theme,
   subtaskText,
   onChangeText,
+  subtaskDescription,
+  onChangeDescription,
   onOpenDate,
   onOpenTime,
   onClearDeadline,
@@ -101,7 +107,7 @@ export default function SubtaskEditorModal({
   const { width, height } = useWindowDimensions();
   const styles = useMemo(
     () => createStyles(colors, theme, { width, height }),
-    [colors, theme, height, width]
+    [colors, theme, height, width],
   );
 
   if (!visible || !editingSubtask) {
@@ -202,6 +208,18 @@ export default function SubtaskEditorModal({
                   placeholder={strings.subtaskName}
                   placeholderTextColor={colors.placeholder}
                   style={styles.input}
+                />
+                <Text style={styles.descriptionLabel}>
+                  {strings.subtaskDescription}
+                </Text>
+                <TextInput
+                  value={subtaskDescription}
+                  onChangeText={onChangeDescription}
+                  placeholder={strings.subtaskDescriptionPlaceholder}
+                  placeholderTextColor={colors.placeholder}
+                  style={[styles.input, styles.descriptionInput]}
+                  multiline
+                  textAlignVertical="top"
                 />
               </View>
 
@@ -462,7 +480,7 @@ export default function SubtaskEditorModal({
 const createStyles = (
   colors: ThemeColors,
   theme: "light" | "dark",
-  layout: { width: number; height: number }
+  layout: { width: number; height: number },
 ) => {
   const isLight = theme === "light";
   const accent = colors.addButton;
@@ -475,7 +493,7 @@ const createStyles = (
   const availableWidth = Math.max(width - overlayPadding * 2, 0);
   const panelWidth = Math.min(
     maxPanelWidth,
-    availableWidth > 0 ? availableWidth : maxPanelWidth
+    availableWidth > 0 ? availableWidth : maxPanelWidth,
   );
   const heightCap = isWeb ? 560 : 600;
   const adaptiveLimit = Math.round(height * (isWeb ? 0.92 : 0.88));
@@ -483,12 +501,12 @@ const createStyles = (
   const panelMaxHeight = Math.min(
     heightCap,
     adaptiveLimit > 0 ? adaptiveLimit : heightCap,
-    availableHeight > 0 ? availableHeight : heightCap
+    availableHeight > 0 ? availableHeight : heightCap,
   );
   const reservedHeight = panelPadding * 2 + 140;
   const contentMaxHeight = Math.min(
     panelMaxHeight - panelPadding * 2,
-    Math.max(panelMaxHeight - reservedHeight, 220)
+    Math.max(panelMaxHeight - reservedHeight, 220),
   );
 
   return StyleSheet.create({
@@ -606,6 +624,16 @@ const createStyles = (
       borderWidth: 1,
       borderColor: isLight ? "#E2E7F1" : "#252D3D",
       fontSize: 15,
+    },
+    descriptionLabel: {
+      marginTop: 16,
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    descriptionInput: {
+      marginTop: 10,
+      minHeight: 96,
     },
     actionRow: {
       flexDirection: "row",

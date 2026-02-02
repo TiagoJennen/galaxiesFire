@@ -11,6 +11,8 @@ export interface SubTodo {
 
   done: boolean;
 
+  description?: string | null;
+
   deadline?: string | null;
 
   image?: string | null;
@@ -29,6 +31,8 @@ export interface Todo {
   text: string;
 
   done: boolean;
+
+  description?: string | null;
 
   deadline?: string | null;
 

@@ -22,6 +22,8 @@ type TaskCreatorProps = {
   theme: "light" | "dark";
   taskText: string;
   onChangeTask: (value: string) => void;
+  taskDescription: string;
+  onChangeDescription: (value: string) => void;
   inputRef?: React.RefObject<TextInput | null>;
   priority: TaskPriority;
   onSelectPriority: (value: TaskPriority) => void;
@@ -30,6 +32,7 @@ type TaskCreatorProps = {
   onOpenLocation: () => void;
   onAdd: () => void;
   placeholder: string;
+  descriptionPlaceholder: string;
   locationAccessibility: {
     label: string;
     hint: string;
@@ -53,6 +56,8 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
   theme,
   taskText,
   onChangeTask,
+  taskDescription,
+  onChangeDescription,
   inputRef,
   priority,
   onSelectPriority,
@@ -61,6 +66,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
   onOpenLocation,
   onAdd,
   placeholder,
+  descriptionPlaceholder,
   locationAccessibility,
   showInlineAdd = true,
 }) => {
@@ -72,6 +78,8 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
       <InlineSubtaskEditor
         text={taskText}
         onChangeText={onChangeTask}
+        description={taskDescription}
+        onChangeDescription={onChangeDescription}
         priority={priority}
         onSelectPriority={onSelectPriority}
         onOpenDate={onOpenDate}
@@ -81,6 +89,7 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
         colors={colors}
         theme={theme}
         placeholder={placeholder}
+        descriptionPlaceholder={descriptionPlaceholder}
         accessibilityLabels={{
           locationLabel: locationAccessibility.label,
           locationHint: locationAccessibility.hint,
@@ -143,6 +152,17 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
         style={styles.input}
         placeholderTextColor={styles.placeholderColor.color as string}
         autoCorrect={false}
+      />
+
+      <TextInput
+        placeholder={descriptionPlaceholder}
+        value={taskDescription}
+        onChangeText={onChangeDescription}
+        style={[styles.input, styles.descriptionInput]}
+        placeholderTextColor={styles.placeholderColor.color as string}
+        autoCorrect={false}
+        multiline
+        textAlignVertical="top"
       />
 
       <View style={styles.controlsRow}>
@@ -247,6 +267,10 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
     },
     placeholderColor: {
       color: colors.placeholder,
+    },
+    descriptionInput: {
+      marginTop: 12,
+      minHeight: 88,
     },
     controlsRow: {
       marginTop: 18,

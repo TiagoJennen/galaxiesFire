@@ -24,6 +24,8 @@ export type TaskCreatorModalProps = {
   language: "nl" | "en";
   taskText: string;
   onChangeTask: (value: string) => void;
+  taskDescription: string;
+  onChangeDescription: (value: string) => void;
   inputRef?: React.RefObject<TextInput | null>;
   priority: TaskPriority;
   onSelectPriority: (value: TaskPriority) => void;
@@ -32,6 +34,7 @@ export type TaskCreatorModalProps = {
   onOpenLocation: () => void;
   onAdd: () => void;
   placeholder: string;
+  descriptionPlaceholder: string;
   locationAccessibility: {
     label: string;
     hint: string;
@@ -55,6 +58,8 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
   language,
   taskText,
   onChangeTask,
+  taskDescription,
+  onChangeDescription,
   inputRef,
   priority,
   onSelectPriority,
@@ -63,6 +68,7 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
   onOpenLocation,
   onAdd,
   placeholder,
+  descriptionPlaceholder,
   locationAccessibility,
   deadlinePreview,
   locationPreview,
@@ -163,6 +169,8 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
                 theme={theme}
                 taskText={taskText}
                 onChangeTask={onChangeTask}
+                taskDescription={taskDescription}
+                onChangeDescription={onChangeDescription}
                 inputRef={inputRef}
                 priority={priority}
                 onSelectPriority={onSelectPriority}
@@ -171,6 +179,7 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
                 onOpenLocation={onOpenLocation}
                 onAdd={onAdd}
                 placeholder={placeholder}
+                descriptionPlaceholder={descriptionPlaceholder}
                 locationAccessibility={locationAccessibility}
                 showInlineAdd={false}
               />

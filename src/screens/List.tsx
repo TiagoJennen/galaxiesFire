@@ -121,6 +121,7 @@ const List: React.FC<ListScreenProps> = ({
   const isLandscape = windowWidth > windowHeight;
   const isIOS = Platform.OS === "ios";
   const [task, setTask] = useState("");
+  const [taskDescription, setTaskDescription] = useState("");
   const [todos, setTodos] = useState<Todo[]>([]);
   const [archivedTodos, setArchivedTodos] = useState<Todo[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -128,6 +129,7 @@ const List: React.FC<ListScreenProps> = ({
   const [selectedTime, setSelectedTime] = useState<Date | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [subtaskText, setSubtaskText] = useState("");
+  const [subtaskDescription, setSubtaskDescription] = useState("");
   const [subtaskDate, setSubtaskDate] = useState<Date | null>(null);
   const [subtaskTime, setSubtaskTime] = useState<Date | null>(null);
   const [showSubtaskDatePicker, setShowSubtaskDatePicker] = useState(false);
@@ -179,6 +181,7 @@ const List: React.FC<ListScreenProps> = ({
   const [taskEditorVisible, setTaskEditorVisible] = useState(false);
   const [taskEditorIndex, setTaskEditorIndex] = useState<number | null>(null);
   const [taskEditorText, setTaskEditorText] = useState("");
+  const [taskEditorDescription, setTaskEditorDescription] = useState("");
   const [taskEditorDate, setTaskEditorDate] = useState<Date | null>(null);
   const [taskEditorTime, setTaskEditorTime] = useState<Date | null>(null);
   const [taskEditorPriority, setTaskEditorPriority] = useState<
@@ -201,6 +204,7 @@ const List: React.FC<ListScreenProps> = ({
     null,
   );
   const [subtaskEditorText, setSubtaskEditorText] = useState("");
+  const [subtaskEditorDescription, setSubtaskEditorDescription] = useState("");
   const [subtaskEditorDate, setSubtaskEditorDate] = useState<Date | null>(null);
   const [subtaskEditorTime, setSubtaskEditorTime] = useState<Date | null>(null);
   const [showSubtaskEditorDatePicker, setShowSubtaskEditorDatePicker] =
@@ -266,6 +270,7 @@ const List: React.FC<ListScreenProps> = ({
 
   const resetSubtaskDraft = useCallback(() => {
     setSubtaskText("");
+    setSubtaskDescription("");
     setSubtaskDate(null);
     setSubtaskTime(null);
     setNewSubtaskPriority("medium");
@@ -1349,10 +1354,12 @@ const List: React.FC<ListScreenProps> = ({
       }
 
       const finalDate = combineDateAndTime(selectedDate, selectedTime);
+      const trimmedDescription = taskDescription.trim();
 
       const newTodo: Todo = {
         text: task,
         done: false,
+        description: trimmedDescription,
         deadline: finalDate,
         subtasks: [],
         image: null,
@@ -1368,6 +1375,7 @@ const List: React.FC<ListScreenProps> = ({
       }
       showTaskFeedback("added", target);
       setTask("");
+      setTaskDescription("");
       setSelectedDate(null);
       setSelectedTime(null);
       setSelectedLocation(null);
@@ -1388,6 +1396,7 @@ const List: React.FC<ListScreenProps> = ({
       showTaskFeedback,
       strings,
       task,
+      taskDescription,
       todos,
       closeTaskCreatorModal,
     ],
@@ -1405,6 +1414,7 @@ const List: React.FC<ListScreenProps> = ({
       setTaskEditorSource(source);
       setTaskEditorIndex(index);
       setTaskEditorText(target.text);
+      setTaskEditorDescription(target.description ?? "");
       const nextPriority =
         target.priority === "high" ||
         target.priority === "low" ||
@@ -1435,6 +1445,7 @@ const List: React.FC<ListScreenProps> = ({
     setTaskEditorVisible(false);
     setTaskEditorIndex(null);
     setTaskEditorText("");
+    setTaskEditorDescription("");
     setTaskEditorDate(null);
     setTaskEditorTime(null);
     setTaskEditorPriority("medium");
@@ -1451,6 +1462,7 @@ const List: React.FC<ListScreenProps> = ({
       showInputWarning(strings.taskNameRequired);
       return;
     }
+    const trimmedDescription = taskEditorDescription.trim();
 
     const isArchive = taskEditorSource === "archive";
     const updatedTodos = [...todos];
@@ -1464,6 +1476,7 @@ const List: React.FC<ListScreenProps> = ({
     targetList[taskEditorIndex] = {
       ...target,
       text: trimmed,
+      description: trimmedDescription,
       deadline: combineDateAndTime(taskEditorDate, taskEditorTime),
       priority: taskEditorPriority,
     };
@@ -1610,6 +1623,7 @@ const List: React.FC<ListScreenProps> = ({
       setSubtaskEditorParentIndex(todoIndex);
       setSubtaskEditorIndex(subIndex);
       setSubtaskEditorText(sub.text);
+      setSubtaskEditorDescription(sub.description ?? "");
       if (sub.deadline) {
         const deadlineDate = new Date(sub.deadline);
         setSubtaskEditorDate(deadlineDate);
@@ -1630,6 +1644,7 @@ const List: React.FC<ListScreenProps> = ({
     setSubtaskEditorParentIndex(null);
     setSubtaskEditorIndex(null);
     setSubtaskEditorText("");
+    setSubtaskEditorDescription("");
     setSubtaskEditorDate(null);
     setSubtaskEditorTime(null);
     setShowSubtaskEditorDatePicker(false);
@@ -1646,6 +1661,7 @@ const List: React.FC<ListScreenProps> = ({
       showInputWarning(strings.subtaskNameRequired);
       return;
     }
+    const trimmedDescription = subtaskEditorDescription.trim();
     const isArchive = subtaskEditorSource === "archive";
     const updatedTodos = [...todos];
     const updatedArchived = [...archivedTodos];
@@ -1664,6 +1680,7 @@ const List: React.FC<ListScreenProps> = ({
     updatedSubtasks[subtaskEditorIndex] = {
       ...existingSub,
       text: trimmed,
+      description: trimmedDescription,
       deadline: combineDateAndTime(subtaskEditorDate, subtaskEditorTime),
     };
     parentList[subtaskEditorParentIndex] = {
@@ -1948,11 +1965,14 @@ const List: React.FC<ListScreenProps> = ({
         );
         return;
       }
+      const trimmedDescription = subtaskDescription.trim();
+
       const updatedSubtasks = [
         ...parent.subtasks,
         {
           text: subtaskText,
           done: false,
+          description: trimmedDescription,
           deadline: finalDate,
           image: null,
           createdAt: new Date().toISOString(),
@@ -1982,6 +2002,7 @@ const List: React.FC<ListScreenProps> = ({
       showInputWarning,
       showTaskFeedback,
       subtaskDate,
+      subtaskDescription,
       subtaskText,
       subtaskTime,
       todos,
@@ -3323,6 +3344,8 @@ const List: React.FC<ListScreenProps> = ({
     () => ({
       editSubtask: strings.editSubtask,
       subtaskName: strings.subtaskName,
+      subtaskDescription: strings.subtaskDescription,
+      subtaskDescriptionPlaceholder: strings.subtaskDescriptionPlaceholder,
       deadline: strings.deadline,
       clearDeadline: strings.clearDeadline,
       noDeadline: strings.noDeadline,
@@ -3348,6 +3371,8 @@ const List: React.FC<ListScreenProps> = ({
     () => ({
       editTask: strings.editTask,
       taskName: strings.taskName,
+      taskDescription: strings.taskDescription,
+      taskDescriptionPlaceholder: strings.taskDescriptionPlaceholder,
       deadline: strings.deadline,
       clearDeadline: strings.clearDeadline,
       deadlineOverdue: strings.deadlineOverdue,
@@ -3783,6 +3808,8 @@ const List: React.FC<ListScreenProps> = ({
         theme={theme}
         subtaskText={subtaskEditorText}
         onChangeText={setSubtaskEditorText}
+        subtaskDescription={subtaskEditorDescription}
+        onChangeDescription={setSubtaskEditorDescription}
         onOpenDate={openSubtaskEditorDate}
         onOpenTime={openSubtaskEditorTime}
         onClearDeadline={clearSubtaskEditorDeadline}
@@ -3815,6 +3842,8 @@ const List: React.FC<ListScreenProps> = ({
         language={language}
         subtaskText={subtaskText}
         onChangeSubtask={setSubtaskText}
+        subtaskDescription={subtaskDescription}
+        onChangeSubtaskDescription={setSubtaskDescription}
         priority={newSubtaskPriority}
         onSelectPriority={setNewSubtaskPriority}
         onOpenDate={openSubtaskDate}
@@ -3823,6 +3852,7 @@ const List: React.FC<ListScreenProps> = ({
         onAdd={handleSubtaskCreatorAdd}
         onClose={closeSubtaskCreator}
         placeholder={strings.newSubtask}
+        descriptionPlaceholder={strings.subtaskDescriptionPlaceholder}
         deadlinePreview={subtaskCreatorDeadlineDisplay}
         locationPreview={subtaskCreatorLocationDisplay}
         locationAccessibility={{
@@ -3843,6 +3873,8 @@ const List: React.FC<ListScreenProps> = ({
         theme={theme}
         taskText={taskEditorText}
         onChangeText={setTaskEditorText}
+        taskDescription={taskEditorDescription}
+        onChangeDescription={setTaskEditorDescription}
         onOpenDate={openTaskEditorDate}
         onOpenTime={openTaskEditorTime}
         onClearDeadline={clearTaskEditorDeadline}
@@ -3875,6 +3907,8 @@ const List: React.FC<ListScreenProps> = ({
         language={language}
         taskText={task}
         onChangeTask={setTask}
+        taskDescription={taskDescription}
+        onChangeDescription={setTaskDescription}
         inputRef={taskInputRef}
         priority={newPriority}
         onSelectPriority={setNewPriority}
@@ -3883,6 +3917,7 @@ const List: React.FC<ListScreenProps> = ({
         onOpenLocation={handleTaskCreatorOpenLocation}
         onAdd={handleTaskCreatorAdd}
         placeholder={strings.addTask}
+        descriptionPlaceholder={strings.taskDescriptionPlaceholder}
         deadlinePreview={taskCreatorDeadlineDisplay}
         locationPreview={taskCreatorLocationDisplay}
         locationAccessibility={{
