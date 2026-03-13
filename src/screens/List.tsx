@@ -1345,35 +1345,47 @@ const List: React.FC<ListScreenProps> = ({
     setShowTimePicker(false);
   }, [showArchive]);
 
-  // Voeg een nieuwe taak toe met optionele deadline/tijd
+  // Functie om een nieuwe taak toe te voegen
   const addTodo = useCallback(
     (target: ListSource = "active") => {
+      // Controleer of de gebruiker een taaknaam heeft ingevuld
       if (!task.trim()) {
         showInputWarning(strings.taskNameRequired);
         return;
       }
 
+      // Combineer gekozen datum en tijd tot één deadline
       const finalDate = combineDateAndTime(selectedDate, selectedTime);
+
+      // Verwijder extra spaties uit de beschrijving
       const trimmedDescription = taskDescription.trim();
 
+      // Maak een nieuw taak object
       const newTodo: Todo = {
-        text: task,
-        done: false,
-        description: trimmedDescription,
-        deadline: finalDate,
-        subtasks: [],
-        image: null,
-        createdAt: new Date().toISOString(),
-        priority: newPriority,
-        location: selectedLocation,
-        locationDescription: selectedLocationDescription,
+        text: task, // naam van de taak
+        done: false, // taak is nog niet voltooid
+        description: trimmedDescription, // beschrijving van de taak
+        deadline: finalDate, // deadline van de taak
+        subtasks: [], // lijst voor subtaken
+        image: null, // eventueel een afbeelding
+        createdAt: new Date().toISOString(), // datum wanneer taak is gemaakt
+        priority: newPriority, // prioriteit van de taak
+        location: selectedLocation, // GPS locatie
+        locationDescription: selectedLocationDescription, // beschrijving van locatie
       };
+
+      // Als de taak direct naar het archief moet
       if (target === "archive") {
         saveAll(todos, [...archivedTodos, newTodo]);
       } else {
+        // Anders toevoegen aan actieve taken
         saveAll([...todos, newTodo], archivedTodos);
       }
+
+      // Feedback laten zien dat taak is toegevoegd
       showTaskFeedback("added", target);
+
+      // Input velden leegmaken voor nieuwe taak
       setTask("");
       setTaskDescription("");
       setSelectedDate(null);
@@ -1381,6 +1393,8 @@ const List: React.FC<ListScreenProps> = ({
       setSelectedLocation(null);
       setSelectedLocationDescription(null);
       setMapRegion(null);
+
+      // Sluit het venster waarin je een taak maakt
       closeTaskCreatorModal();
     },
     [
@@ -1847,24 +1861,34 @@ const List: React.FC<ListScreenProps> = ({
     [resetSubtaskDraft],
   );
 
-  // Verwijder taak (met confirm)
+  // Functie om een taak te verwijderen
   const removeTodo = useCallback(
     (index: number) => {
+      // Vraag eerst bevestiging aan de gebruiker
       confirmDelete(strings.confirmDelete, strings.deleteTask, () => {
+        // Haal de taak op die verwijderd wordt
         const removed = todos[index];
+
+        // Verwijder taak uit actieve taken
         saveAll(
           todos.filter((_, i) => i !== index),
           archivedTodos,
         );
+
+        // Laat feedback zien dat taak is verwijderd
         showTaskFeedback("deleted", "active", {
           label: removed?.text,
         });
+
+        // Mogelijkheid om taak tijdelijk terug te halen (undo)
         if (removed) {
           setRecentlyDeleted({
             todo: removed,
             source: "active",
             index,
           });
+
+          // Timer om undo optie later te resetten
           scheduleRecentlyDeletedReset();
         }
       });
@@ -1880,32 +1904,47 @@ const List: React.FC<ListScreenProps> = ({
     ],
   );
 
-  // Archiveer taak: verplaats van todos naar archivedTodos
+  // Functie om een taak naar het archief te verplaatsen
   const archiveTodo = useCallback(
     (index: number) => {
+      // Haal de taak op uit de lijst
       const todoToArchive = todos[index];
+
+      // Controleer of de taak bestaat
       if (!todoToArchive) {
         return;
       }
+
+      // Verplaats taak van actieve lijst naar archief
       saveAll(
-        todos.filter((_, i) => i !== index),
-        [...archivedTodos, todoToArchive],
+        todos.filter((_, i) => i !== index), // verwijder uit actieve taken
+        [...archivedTodos, todoToArchive], // voeg toe aan archief
       );
+
+      // Laat feedback zien dat taak is bijgewerkt
       showTaskFeedback("updated", "archive");
     },
     [archivedTodos, saveAll, showTaskFeedback, todos],
   );
 
+  // Functie om een taak terug te zetten vanuit het archief
   const unarchiveTodo = useCallback(
     (index: number) => {
+      // Haal taak op uit archief
       const todoToUnarchive = archivedTodos[index];
+
+      // Controleer of taak bestaat
       if (!todoToUnarchive) {
         return;
       }
+
+      // Zet taak terug naar actieve taken
       saveAll(
-        [...todos, todoToUnarchive],
-        archivedTodos.filter((_, i) => i !== index),
+        [...todos, todoToUnarchive], // voeg toe aan actieve taken
+        archivedTodos.filter((_, i) => i !== index), // verwijder uit archief
       );
+
+      // Laat feedback zien dat taak is teruggezet
       showTaskFeedback("updated", "active");
     },
     [archivedTodos, saveAll, showTaskFeedback, todos],
