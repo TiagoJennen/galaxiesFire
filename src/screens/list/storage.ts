@@ -1,7 +1,8 @@
-import { doc, getDoc, getFirestore, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { Todo } from "./types";
+import { FIREBASE_DB } from "../../services/FirebaseConfig";
 
-const FIRESTORE_DB = getFirestore();
+const FIRESTORE_DB = FIREBASE_DB;
 
 // Normaliseer zodat Firestore geen undefined veldwaarden ziet en schema consistent blijft.
 const normalizeTodo = (todo: Todo): Todo => ({
@@ -16,7 +17,6 @@ const normalizeTodo = (todo: Todo): Todo => ({
   // Subtaken ook normaliseren zodat Firestore geen undefined waarden krijgt
   subtasks: todo.subtasks.map((sub) => ({
     ...sub,
-    description: sub.description ?? "",
     deadline: sub.deadline || null,
     createdAt: sub.createdAt || null,
     image: sub.image || null,

@@ -375,9 +375,6 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                       sub.priority as keyof typeof priorityLabelMap
                     ] ?? sub.priority.toUpperCase())
                   : null;
-                const subtaskDescription = sub.description?.trim() ?? "";
-                const showSubtaskDescription = subtaskDescription.length > 0;
-
                 return (
                   <View
                     key={`todo-${originalIndex}-sub-${subIndex}`}
@@ -425,17 +422,6 @@ const ActiveTodoList: React.FC<ActiveTodoListProps> = ({
                       >
                         {sub.text}
                       </Text>
-                      {showSubtaskDescription ? (
-                        <Text
-                          style={[
-                            styles.subtaskDescription,
-                            sub.done && styles.subtaskDescriptionDone,
-                          ]}
-                          numberOfLines={3}
-                        >
-                          {subtaskDescription}
-                        </Text>
-                      ) : null}
                       <View style={styles.metaRow}>
                         {sub.createdAt ? (
                           <Text style={styles.metaText}>
@@ -662,8 +648,8 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
       alignItems: "stretch",
     },
     card: {
-      marginBottom: 20,
-      padding: 20,
+      marginBottom: 6,
+      padding: 12,
       borderRadius: 24,
       backgroundColor: colors.formBackground,
       shadowColor: "#000000",
@@ -676,15 +662,15 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
     cardHeader: {
       flexDirection: "row",
       alignItems: "flex-start",
-      marginBottom: 16,
+      marginBottom: 6,
     },
     checkButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      width: 42,
+      height: 42,
+      borderRadius: 21,
       alignItems: "center",
       justifyContent: "center",
-      marginRight: 14,
+      marginRight: 12,
       backgroundColor: isLight ? "#EAF0FB" : "#1F2734",
       shadowColor: "#000",
       shadowOpacity: 0.08,
@@ -735,8 +721,9 @@ const createStyles = (colors: ThemeColors, theme: "light" | "dark") => {
     taskText: {
       color: colors.text,
       fontFamily: boldFont,
-      fontSize: 18,
-      lineHeight: 24,
+      fontSize: 24,
+      lineHeight: 30,
+      fontWeight: "700",
     },
     taskTextDone: {
       color: colors.doneText,

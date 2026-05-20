@@ -63,18 +63,64 @@ const Signup: React.FC<Props> = ({
   const signUp = async () => {
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(FIREBASE_AUTH, email, password);
+      await createUserWithEmailAndPassword(
+        FIREBASE_AUTH,
+        email,
+        password,
+      );
+
+      // Log the user out after registration so they must sign in manually.
       try {
         await signOut(FIREBASE_AUTH);
-      } catch (error) {
-        console.log("Firebase signOut after signup failed:", error);
+      } catch (signOutError) {
+        console.log("Firebase signOut after signup failed:", signOutError);
       }
-      alert(translations[language].checkMail);
+
       setEmail("");
       setPassword("");
-      navigation.navigate("Login");
+      navigation.reset({ index: 0, routes: [{ name: "Login" }] });
+      alert(
+        language === "nl"
+          ? "Account aangemaakt. Log nu in met je nieuwe account."
+          : "Account created. Now sign in with your new account.",
+      );
     } catch (error: any) {
-      alert(translations[language].signupFailed + " " + error.message);
+      const code = error?.code ?? "";
+      const message = String(error?.message ?? "");
+      const combinedErrorText = `${code} ${message}`.toLowerCase();
+
+      if (code === "auth/email-already-in-use") {
+        alert(
+          language === "nl"
+            ? "Dit e-mailadres is al in gebruik."
+            : "This email address is already in use.",
+        );
+      } else if (code === "auth/weak-password") {
+        alert(
+          language === "nl"
+            ? "Wachtwoord is te zwak (minstens 6 tekens)."
+            : "Password is too weak (at least 6 characters).",
+        );
+      } else if (code === "auth/invalid-email") {
+        alert(
+          language === "nl"
+            ? "Ongeldig e-mailadres."
+            : "Invalid email address.",
+        );
+      } else if (code === "auth/network-request-failed") {
+        const invalidConfig =
+          combinedErrorText.includes("api key") ||
+          combinedErrorText.includes("api_key_invalid") ||
+          combinedErrorText.includes("api key not valid");
+        alert(
+          invalidConfig
+            ? translations[language].firebaseConfigInvalid
+            : translations[language].authNetworkFailed,
+        );
+      } else {
+        console.log("Firebase signup error:", { code, message, raw: error });
+        alert(translations[language].signupFailed + " " + message);
+      }
     } finally {
       setLoading(false);
     }

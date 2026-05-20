@@ -23,8 +23,6 @@ export type SubtaskCreatorModalProps = {
   language: "nl" | "en";
   subtaskText: string;
   onChangeSubtask: (value: string) => void;
-  subtaskDescription: string;
-  onChangeSubtaskDescription: (value: string) => void;
   priority: SubtaskPriority;
   onSelectPriority: (value: SubtaskPriority) => void;
   onOpenDate: () => void;
@@ -33,7 +31,6 @@ export type SubtaskCreatorModalProps = {
   onAdd: () => void;
   onClose: () => void;
   placeholder: string;
-  descriptionPlaceholder: string;
   deadlinePreview: string;
   locationPreview: string;
   locationAccessibility: {
@@ -57,8 +54,6 @@ const SubtaskCreatorModal: React.FC<SubtaskCreatorModalProps> = ({
   language,
   subtaskText,
   onChangeSubtask,
-  subtaskDescription,
-  onChangeSubtaskDescription,
   priority,
   onSelectPriority,
   onOpenDate,
@@ -67,7 +62,6 @@ const SubtaskCreatorModal: React.FC<SubtaskCreatorModalProps> = ({
   onAdd,
   onClose,
   placeholder,
-  descriptionPlaceholder,
   deadlinePreview,
   locationPreview,
   locationAccessibility,
@@ -87,11 +81,11 @@ const SubtaskCreatorModal: React.FC<SubtaskCreatorModalProps> = ({
   const locationValue = locationPreview || badgeEmpty;
   const deadlineEmpty = deadlinePreview.trim().length === 0;
   const locationEmpty = locationPreview.trim().length === 0;
-  const submitLabel = language === "nl" ? "Toevoegen" : "Add";
+  const submitLabel = language === "nl" ? "Opslaan" : "Save";
   const submitHint =
     language === "nl"
-      ? "Voeg de nieuwe subtaak toe met de huidige instellingen."
-      : "Add the new subtask with the current settings.";
+      ? "Sla de subtaak op met de huidige instellingen."
+      : "Save the new subtask with the current settings.";
   const shouldRenderPrimaryModal = visible;
   const activeIOSPicker = Platform.OS === "ios" ? iosPicker : null;
   const showIOSPicker = Boolean(activeIOSPicker);
@@ -164,8 +158,6 @@ const SubtaskCreatorModal: React.FC<SubtaskCreatorModalProps> = ({
               <InlineSubtaskEditor
                 text={subtaskText}
                 onChangeText={onChangeSubtask}
-                description={subtaskDescription}
-                onChangeDescription={onChangeSubtaskDescription}
                 priority={priority}
                 onSelectPriority={onSelectPriority}
                 onOpenDate={onOpenDate}
@@ -175,7 +167,6 @@ const SubtaskCreatorModal: React.FC<SubtaskCreatorModalProps> = ({
                 colors={colors}
                 theme={theme}
                 placeholder={placeholder}
-                descriptionPlaceholder={descriptionPlaceholder}
                 accessibilityLabels={{
                   locationLabel: locationAccessibility.label,
                   locationHint: locationAccessibility.hint,

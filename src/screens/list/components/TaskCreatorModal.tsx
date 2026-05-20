@@ -24,8 +24,6 @@ export type TaskCreatorModalProps = {
   language: "nl" | "en";
   taskText: string;
   onChangeTask: (value: string) => void;
-  taskDescription: string;
-  onChangeDescription: (value: string) => void;
   inputRef?: React.RefObject<TextInput | null>;
   priority: TaskPriority;
   onSelectPriority: (value: TaskPriority) => void;
@@ -58,8 +56,6 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
   language,
   taskText,
   onChangeTask,
-  taskDescription,
-  onChangeDescription,
   inputRef,
   priority,
   onSelectPriority,
@@ -91,11 +87,11 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
     language === "nl"
       ? "Sluit het formulier voor een nieuwe taak."
       : "Close the new task form.";
-  const submitLabel = language === "nl" ? "Toevoegen" : "Add";
+  const submitLabel = language === "nl" ? "Opslaan" : "Save";
   const submitHint =
     language === "nl"
-      ? "Voeg de nieuwe taak toe met de huidige instellingen."
-      : "Add the new task with the current settings.";
+      ? "Sla de taak op met de huidige instellingen."
+      : "Save the task with the current settings.";
   const shouldRenderPrimaryModal = visible;
   const showIOSPicker = Platform.OS === "ios" && iosPicker;
   const pickerDoneLabel = language === "nl" ? "Gereed" : "Done";
@@ -169,8 +165,6 @@ const TaskCreatorModal: React.FC<TaskCreatorModalProps> = ({
                 theme={theme}
                 taskText={taskText}
                 onChangeTask={onChangeTask}
-                taskDescription={taskDescription}
-                onChangeDescription={onChangeDescription}
                 inputRef={inputRef}
                 priority={priority}
                 onSelectPriority={onSelectPriority}

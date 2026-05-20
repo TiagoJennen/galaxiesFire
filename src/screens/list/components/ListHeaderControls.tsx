@@ -69,12 +69,11 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
   const hasHeading = hasTitle || hasSubtitle;
   const showLogout = typeof onLogout === "function";
 
-  const addTaskLabel =
-    language === "nl" ? "Hoofdtaak toevoegen" : "Add main task";
+  const addTaskLabel = language === "nl" ? "Nieuwe taak" : "New task";
   const addTaskHint =
     language === "nl"
-      ? "Open het formulier om een hoofdtaak te maken."
-      : "Open the form to create a main task.";
+      ? "Open het formulier om een taak te maken."
+      : "Open the form to create a task.";
   const previousDayLabel = language === "nl" ? "Vorige dag" : "Previous day";
   const previousDayHint =
     language === "nl"
@@ -344,9 +343,7 @@ const ListHeaderControls: React.FC<ListHeaderControlsProps> = ({
             ]}
           >
             <Ionicons name="add" size={20} color="#FFFFFF" />
-            <Text style={styles.addButtonLabel}>
-              {language === "nl" ? "Nieuwe hoofdtaak" : "New main task"}
-            </Text>
+            <Text style={styles.addButtonLabel}>{addTaskLabel}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -382,7 +379,7 @@ const createStyles = ({
 
   return StyleSheet.create({
     wrapper: {
-      marginBottom: isLandscape ? 18 : 28,
+      marginBottom: isLandscape ? 2 : 12,
     },
     headingRow: {
       flexDirection: "column",
@@ -467,7 +464,7 @@ const createStyles = ({
       alignItems: "center",
       justifyContent: "center",
       flexWrap: isWeb ? "nowrap" : "wrap",
-      marginBottom: isLandscape ? 12 : 16,
+      marginBottom: isLandscape ? 6 : 10,
       alignSelf: "stretch",
     },
     topControlRowCentered: {
@@ -478,7 +475,7 @@ const createStyles = ({
       alignItems: "center",
       justifyContent: "center",
       flexWrap: "wrap",
-      marginTop: isLandscape ? 8 : 8,
+      marginTop: isLandscape ? 2 : 8,
     },
     controlRowCentered: {
       justifyContent: "center",
@@ -497,8 +494,8 @@ const createStyles = ({
       shadowRadius: 16,
       shadowOffset: { width: 0, height: 8 },
       elevation: 6,
-      marginHorizontal: 6,
-      marginVertical: isLandscape ? 4 : 6,
+      marginHorizontal: isLandscape ? 3 : 6,
+      marginVertical: isLandscape ? 2 : 6,
     },
     controlButtonPressed: {
       transform: [{ scale: 0.97 }],

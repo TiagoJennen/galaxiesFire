@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useColorScheme } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Login from "./screens/Login";
 import Signup from "./screens/Signup";
 import List from "./screens/List";
-import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import { onAuthStateChanged, User } from "firebase/auth";
 import { FIREBASE_AUTH } from "./services/FirebaseConfig";
 import { StatusBar } from "expo-status-bar";
 
@@ -60,6 +60,7 @@ function InsideLayout({
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const navigationRef = useRef<any>(null);
 
   const systemScheme = useColorScheme();
   const [theme, setTheme] = useState<"light" | "dark">(systemScheme || "light");
@@ -75,17 +76,13 @@ export default function App() {
     let unsubscribe: (() => void) | undefined;
 
     const initialiseSession = async () => {
-      try {
-        await signOut(FIREBASE_AUTH);
-      } catch (error) {
-        console.log("Failed to reset auth session:", error);
-      }
-
-      if (!isMounted) {
-        return;
-      }
+      // Subscribe to auth state changes and update local state.
+      // Do not sign out on startup — preserve existing sessions so
+      // newly-registered users remain signed in.
+      if (!isMounted) return;
 
       unsubscribe = onAuthStateChanged(FIREBASE_AUTH, (usr) => {
+        console.log('onAuthStateChanged user:', usr ? { uid: usr.uid, email: usr.email } : null);
         setUser(usr);
         setLoading(false);
       });
@@ -99,12 +96,44 @@ export default function App() {
     };
   }, []);
 
+  // Reset navigation whenever auth state changes after the navigator is ready.
+  useEffect(() => {
+    if (loading) return;
+    const nav = navigationRef.current;
+    if (!nav) return;
+
+    try {
+      console.log('Auth change effect: user=', user ? user.uid : null);
+      if (!user) {
+        nav.reset({ index: 0, routes: [{ name: "Login" }] });
+      } else {
+        nav.reset({ index: 0, routes: [{ name: "Inside" }] });
+      }
+    } catch (e) {
+      // navigation may not be ready; ignore and allow onReady handler to run.
+    }
+  }, [user, loading]);
+
   if (loading) return null;
 
   return (
     <>
       <StatusBar style={theme === "light" ? "dark" : "light"} hidden={false} />
-      <NavigationContainer>
+      <NavigationContainer
+        ref={navigationRef}
+        onReady={() => {
+          if (!user) {
+            // Reset to login when auth state changes
+            const state = navigationRef.current?.getRootState();
+            if (state?.routes[0]?.name !== "Login") {
+              navigationRef.current?.reset({
+                index: 0,
+                routes: [{ name: "Login" }],
+              });
+            }
+          }
+        }}
+      >
         <Stack.Navigator
           screenOptions={{
             headerStyle: {
@@ -112,42 +141,38 @@ export default function App() {
             },
             headerTintColor: theme === "light" ? "#000" : "#fff",
           }}
+          initialRouteName={user ? "Inside" : "Login"}
         >
-          {user ? (
-            <Stack.Screen name="Inside" options={{ headerShown: false }}>
-              {() => (
-                <InsideLayout
-                  theme={theme}
-                  toggleTheme={toggleTheme}
-                  language={language}
-                  toggleLanguage={toggleLanguage}
-                />
-              )}
-            </Stack.Screen>
-          ) : (
-            <>
-              <Stack.Screen name="Login" options={{ headerShown: false }}>
-                {() => (
-                  <Login
-                    theme={theme}
-                    toggleTheme={toggleTheme}
-                    language={language}
-                    toggleLanguage={toggleLanguage}
-                  />
-                )}
-              </Stack.Screen>
-              <Stack.Screen name="Signup" options={{ headerShown: false }}>
-                {() => (
-                  <Signup
-                    theme={theme}
-                    toggleTheme={toggleTheme}
-                    language={language}
-                    toggleLanguage={toggleLanguage}
-                  />
-                )}
-              </Stack.Screen>
-            </>
-          )}
+          <Stack.Screen name="Login" options={{ headerShown: false }}>
+            {() => (
+              <Login
+                theme={theme}
+                toggleTheme={toggleTheme}
+                language={language}
+                toggleLanguage={toggleLanguage}
+              />
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="Signup" options={{ headerShown: false }}>
+            {() => (
+              <Signup
+                theme={theme}
+                toggleTheme={toggleTheme}
+                language={language}
+                toggleLanguage={toggleLanguage}
+              />
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="Inside" options={{ headerShown: false }}>
+            {() => (
+              <InsideLayout
+                theme={theme}
+                toggleTheme={toggleTheme}
+                language={language}
+                toggleLanguage={toggleLanguage}
+              />
+            )}
+          </Stack.Screen>
         </Stack.Navigator>
       </NavigationContainer>
     </>

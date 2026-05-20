@@ -52,8 +52,7 @@ type TaskEditorModalProps = {
   theme: "light" | "dark";
   taskText: string;
   onChangeText: (text: string) => void;
-  taskDescription: string;
-  onChangeDescription: (text: string) => void;
+  // description removed
   onOpenDate: () => void;
   onOpenTime: () => void;
   onClearDeadline: () => void;
@@ -95,8 +94,6 @@ export const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
   theme,
   taskText,
   onChangeText,
-  taskDescription,
-  onChangeDescription,
   onOpenDate,
   onOpenTime,
   onClearDeadline,
@@ -237,18 +234,7 @@ export const TaskEditorModal: React.FC<TaskEditorModalProps> = ({
                   placeholderTextColor={colors.placeholder}
                   style={styles.input}
                 />
-                <Text style={styles.descriptionLabel}>
-                  {strings.taskDescription}
-                </Text>
-                <TextInput
-                  value={taskDescription}
-                  onChangeText={onChangeDescription}
-                  placeholder={strings.taskDescriptionPlaceholder}
-                  placeholderTextColor={colors.placeholder}
-                  style={[styles.input, styles.descriptionInput]}
-                  multiline
-                  textAlignVertical="top"
-                />
+                {/* description removed */}
               </View>
 
               <View style={styles.sectionCard}>

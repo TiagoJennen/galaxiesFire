@@ -193,17 +193,15 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                 >
                   {item.text}
                 </Text>
-                {showTaskDescription ? (
-                  <Text
-                    style={[
-                      styles.taskDescription,
-                      item.done && styles.taskDescriptionDone,
-                    ]}
-                    numberOfLines={3}
-                  >
-                    {taskDescription}
-                  </Text>
-                ) : null}
+                      {item.subtasks.length > 0 ? (
+                        buildSubtaskDisplay(item.subtasks).map(
+                          ({ sub }) => (
+                            <View key={sub.id}>
+                              <Text>{sub.text}</Text>
+                            </View>
+                          )
+                        )
+                      ) : null}
 
                 <View style={styles.metaRow}>
                   {item.createdAt ? (
@@ -392,9 +390,6 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                       sub.priority as keyof typeof priorityLabelMap
                     ] ?? sub.priority.toUpperCase())
                   : null;
-                const subtaskDescription = sub.description?.trim() ?? "";
-                const showSubtaskDescription = subtaskDescription.length > 0;
-
                 return (
                   <View
                     key={`arch-${originalIndex}-sub-${subIndex}`}
@@ -446,18 +441,6 @@ const ArchivedTodoList: React.FC<ArchivedTodoListProps> = ({
                       >
                         {sub.text}
                       </Text>
-                      {showSubtaskDescription ? (
-                        <Text
-                          style={[
-                            styles.subtaskDescription,
-                            sub.done && styles.subtaskDescriptionDone,
-                          ]}
-                          numberOfLines={3}
-                        >
-                          {subtaskDescription}
-                        </Text>
-                      ) : null}
-
                       <View style={styles.metaRow}>
                         {sub.createdAt ? (
                           <Text style={styles.metaText}>

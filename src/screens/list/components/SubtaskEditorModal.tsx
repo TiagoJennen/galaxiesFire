@@ -23,8 +23,6 @@ import type { SubTodo, LatLng } from "../types";
 export type SubtaskStrings = {
   editSubtask: string;
   subtaskName: string;
-  subtaskDescription: string;
-  subtaskDescriptionPlaceholder: string;
   deadline: string;
   clearDeadline: string;
   noDeadline: string;
@@ -47,8 +45,6 @@ export type SubtaskEditorModalProps = {
   theme: "light" | "dark";
   subtaskText: string;
   onChangeText: (text: string) => void;
-  subtaskDescription: string;
-  onChangeDescription: (text: string) => void;
   onOpenDate: () => void;
   onOpenTime: () => void;
   onClearDeadline: () => void;
@@ -79,8 +75,6 @@ export default function SubtaskEditorModal({
   theme,
   subtaskText,
   onChangeText,
-  subtaskDescription,
-  onChangeDescription,
   onOpenDate,
   onOpenTime,
   onClearDeadline,
@@ -208,18 +202,6 @@ export default function SubtaskEditorModal({
                   placeholder={strings.subtaskName}
                   placeholderTextColor={colors.placeholder}
                   style={styles.input}
-                />
-                <Text style={styles.descriptionLabel}>
-                  {strings.subtaskDescription}
-                </Text>
-                <TextInput
-                  value={subtaskDescription}
-                  onChangeText={onChangeDescription}
-                  placeholder={strings.subtaskDescriptionPlaceholder}
-                  placeholderTextColor={colors.placeholder}
-                  style={[styles.input, styles.descriptionInput]}
-                  multiline
-                  textAlignVertical="top"
                 />
               </View>
 

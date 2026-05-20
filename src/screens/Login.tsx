@@ -61,8 +61,11 @@ const Login: React.FC<Props> = ({
     setLoading(true);
     try {
       await signInWithEmailAndPassword(FIREBASE_AUTH, email, password);
+      navigation.reset({ index: 0, routes: [{ name: "Inside" }] });
     } catch (error: any) {
       const code = error?.code ?? "";
+      const message = String(error?.message ?? "");
+      const combinedErrorText = `${code} ${message}`.toLowerCase();
       const invalidCredentialCodes = [
         "auth/user-not-found",
         "auth/wrong-password",
@@ -71,8 +74,18 @@ const Login: React.FC<Props> = ({
       ];
       if (invalidCredentialCodes.includes(code)) {
         alert(translations[language].invalidCredentials);
+      } else if (code === "auth/network-request-failed") {
+        const invalidConfig =
+          combinedErrorText.includes("api key") ||
+          combinedErrorText.includes("api_key_invalid") ||
+          combinedErrorText.includes("api key not valid");
+        alert(
+          invalidConfig
+            ? translations[language].firebaseConfigInvalid
+            : translations[language].authNetworkFailed,
+        );
       } else {
-        console.log("Firebase login error:", error);
+        console.log("Firebase login error:", { code, message, raw: error });
         alert(translations[language].loginFailed);
       }
     } finally {

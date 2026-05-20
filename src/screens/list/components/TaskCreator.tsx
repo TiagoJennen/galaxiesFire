@@ -22,8 +22,6 @@ type TaskCreatorProps = {
   theme: "light" | "dark";
   taskText: string;
   onChangeTask: (value: string) => void;
-  taskDescription: string;
-  onChangeDescription: (value: string) => void;
   inputRef?: React.RefObject<TextInput | null>;
   priority: TaskPriority;
   onSelectPriority: (value: TaskPriority) => void;
@@ -56,8 +54,6 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
   theme,
   taskText,
   onChangeTask,
-  taskDescription,
-  onChangeDescription,
   inputRef,
   priority,
   onSelectPriority,
@@ -78,8 +74,6 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
       <InlineSubtaskEditor
         text={taskText}
         onChangeText={onChangeTask}
-        description={taskDescription}
-        onChangeDescription={onChangeDescription}
         priority={priority}
         onSelectPriority={onSelectPriority}
         onOpenDate={onOpenDate}
@@ -89,7 +83,6 @@ const TaskCreator: React.FC<TaskCreatorProps> = ({
         colors={colors}
         theme={theme}
         placeholder={placeholder}
-        descriptionPlaceholder={descriptionPlaceholder}
         accessibilityLabels={{
           locationLabel: locationAccessibility.label,
           locationHint: locationAccessibility.hint,

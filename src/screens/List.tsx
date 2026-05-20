@@ -121,7 +121,6 @@ const List: React.FC<ListScreenProps> = ({
   const isLandscape = windowWidth > windowHeight;
   const isIOS = Platform.OS === "ios";
   const [task, setTask] = useState("");
-  const [taskDescription, setTaskDescription] = useState("");
   const [todos, setTodos] = useState<Todo[]>([]);
   const [archivedTodos, setArchivedTodos] = useState<Todo[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -129,7 +128,6 @@ const List: React.FC<ListScreenProps> = ({
   const [selectedTime, setSelectedTime] = useState<Date | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [subtaskText, setSubtaskText] = useState("");
-  const [subtaskDescription, setSubtaskDescription] = useState("");
   const [subtaskDate, setSubtaskDate] = useState<Date | null>(null);
   const [subtaskTime, setSubtaskTime] = useState<Date | null>(null);
   const [showSubtaskDatePicker, setShowSubtaskDatePicker] = useState(false);
@@ -181,7 +179,6 @@ const List: React.FC<ListScreenProps> = ({
   const [taskEditorVisible, setTaskEditorVisible] = useState(false);
   const [taskEditorIndex, setTaskEditorIndex] = useState<number | null>(null);
   const [taskEditorText, setTaskEditorText] = useState("");
-  const [taskEditorDescription, setTaskEditorDescription] = useState("");
   const [taskEditorDate, setTaskEditorDate] = useState<Date | null>(null);
   const [taskEditorTime, setTaskEditorTime] = useState<Date | null>(null);
   const [taskEditorPriority, setTaskEditorPriority] = useState<
@@ -204,7 +201,6 @@ const List: React.FC<ListScreenProps> = ({
     null,
   );
   const [subtaskEditorText, setSubtaskEditorText] = useState("");
-  const [subtaskEditorDescription, setSubtaskEditorDescription] = useState("");
   const [subtaskEditorDate, setSubtaskEditorDate] = useState<Date | null>(null);
   const [subtaskEditorTime, setSubtaskEditorTime] = useState<Date | null>(null);
   const [showSubtaskEditorDatePicker, setShowSubtaskEditorDatePicker] =
@@ -270,7 +266,6 @@ const List: React.FC<ListScreenProps> = ({
 
   const resetSubtaskDraft = useCallback(() => {
     setSubtaskText("");
-    setSubtaskDescription("");
     setSubtaskDate(null);
     setSubtaskTime(null);
     setNewSubtaskPriority("medium");
@@ -384,11 +379,11 @@ const List: React.FC<ListScreenProps> = ({
   }, [locale, selectedDay]);
 
   const addTaskButtonLabel =
-    language === "nl" ? "Nieuwe hoofdtaak" : "New main task";
+    language === "nl" ? "Nieuwe taak" : "New task";
   const addTaskButtonHint =
     language === "nl"
-      ? "Open het formulier om een hoofdtaak te maken."
-      : "Open the form to create a main task.";
+      ? "Open het formulier om een taak te maken."
+      : "Open the form to create a task.";
 
   const fabBottomOffset = insets.bottom + (isLandscape ? 12 : 24);
   const containerPaddingHorizontal = isLandscape ? 16 : 20;
@@ -1357,14 +1352,10 @@ const List: React.FC<ListScreenProps> = ({
       // Combineer gekozen datum en tijd tot één deadline
       const finalDate = combineDateAndTime(selectedDate, selectedTime);
 
-      // Verwijder extra spaties uit de beschrijving
-      const trimmedDescription = taskDescription.trim();
-
       // Maak een nieuw taak object
       const newTodo: Todo = {
         text: task, // naam van de taak
         done: false, // taak is nog niet voltooid
-        description: trimmedDescription, // beschrijving van de taak
         deadline: finalDate, // deadline van de taak
         subtasks: [], // lijst voor subtaken
         image: null, // eventueel een afbeelding
@@ -1387,7 +1378,6 @@ const List: React.FC<ListScreenProps> = ({
 
       // Input velden leegmaken voor nieuwe taak
       setTask("");
-      setTaskDescription("");
       setSelectedDate(null);
       setSelectedTime(null);
       setSelectedLocation(null);
@@ -1410,7 +1400,6 @@ const List: React.FC<ListScreenProps> = ({
       showTaskFeedback,
       strings,
       task,
-      taskDescription,
       todos,
       closeTaskCreatorModal,
     ],
@@ -1428,7 +1417,6 @@ const List: React.FC<ListScreenProps> = ({
       setTaskEditorSource(source);
       setTaskEditorIndex(index);
       setTaskEditorText(target.text);
-      setTaskEditorDescription(target.description ?? "");
       const nextPriority =
         target.priority === "high" ||
         target.priority === "low" ||
@@ -1459,7 +1447,6 @@ const List: React.FC<ListScreenProps> = ({
     setTaskEditorVisible(false);
     setTaskEditorIndex(null);
     setTaskEditorText("");
-    setTaskEditorDescription("");
     setTaskEditorDate(null);
     setTaskEditorTime(null);
     setTaskEditorPriority("medium");
@@ -1476,7 +1463,7 @@ const List: React.FC<ListScreenProps> = ({
       showInputWarning(strings.taskNameRequired);
       return;
     }
-    const trimmedDescription = taskEditorDescription.trim();
+    // descriptions are removed from tasks
 
     const isArchive = taskEditorSource === "archive";
     const updatedTodos = [...todos];
@@ -1488,11 +1475,11 @@ const List: React.FC<ListScreenProps> = ({
       return;
     }
     targetList[taskEditorIndex] = {
-      ...target,
-      text: trimmed,
-      description: trimmedDescription,
-      deadline: combineDateAndTime(taskEditorDate, taskEditorTime),
-      priority: taskEditorPriority,
+    ...target,
+    text: trimmed,
+    description: null,
+    deadline: combineDateAndTime(taskEditorDate, taskEditorTime),
+    priority: taskEditorPriority,
     };
     saveAll(updatedTodos, updatedArchived);
     showTaskFeedback("updated", isArchive ? "archive" : "active");
@@ -1637,7 +1624,6 @@ const List: React.FC<ListScreenProps> = ({
       setSubtaskEditorParentIndex(todoIndex);
       setSubtaskEditorIndex(subIndex);
       setSubtaskEditorText(sub.text);
-      setSubtaskEditorDescription(sub.description ?? "");
       if (sub.deadline) {
         const deadlineDate = new Date(sub.deadline);
         setSubtaskEditorDate(deadlineDate);
@@ -1658,7 +1644,6 @@ const List: React.FC<ListScreenProps> = ({
     setSubtaskEditorParentIndex(null);
     setSubtaskEditorIndex(null);
     setSubtaskEditorText("");
-    setSubtaskEditorDescription("");
     setSubtaskEditorDate(null);
     setSubtaskEditorTime(null);
     setShowSubtaskEditorDatePicker(false);
@@ -1675,7 +1660,6 @@ const List: React.FC<ListScreenProps> = ({
       showInputWarning(strings.subtaskNameRequired);
       return;
     }
-    const trimmedDescription = subtaskEditorDescription.trim();
     const isArchive = subtaskEditorSource === "archive";
     const updatedTodos = [...todos];
     const updatedArchived = [...archivedTodos];
@@ -1694,7 +1678,6 @@ const List: React.FC<ListScreenProps> = ({
     updatedSubtasks[subtaskEditorIndex] = {
       ...existingSub,
       text: trimmed,
-      description: trimmedDescription,
       deadline: combineDateAndTime(subtaskEditorDate, subtaskEditorTime),
     };
     parentList[subtaskEditorParentIndex] = {
@@ -2004,14 +1987,12 @@ const List: React.FC<ListScreenProps> = ({
         );
         return;
       }
-      const trimmedDescription = subtaskDescription.trim();
 
       const updatedSubtasks = [
         ...parent.subtasks,
         {
           text: subtaskText,
           done: false,
-          description: trimmedDescription,
           deadline: finalDate,
           image: null,
           createdAt: new Date().toISOString(),
@@ -2041,7 +2022,6 @@ const List: React.FC<ListScreenProps> = ({
       showInputWarning,
       showTaskFeedback,
       subtaskDate,
-      subtaskDescription,
       subtaskText,
       subtaskTime,
       todos,
@@ -2149,12 +2129,42 @@ const List: React.FC<ListScreenProps> = ({
 
   // Logout: bewaar eerst naar firebase, daarna sign out
   const logout = useCallback(async () => {
-    if (!userId) return;
-    await syncGeofenceTargets(userId, []);
-    await clearGeofenceTaskState(userId);
-    await saveTodosFirebase(userId, todos, archivedTodos);
-    await signOut(FIREBASE_AUTH);
-  }, [archivedTodos, todos, userId]);
+    if (!userId) {
+      console.log("logout called but no userId");
+      return;
+    }
+    console.log("logout: start for", userId);
+    let cleanupError: unknown = null;
+    try {
+      await syncGeofenceTargets(userId, []);
+      await clearGeofenceTaskState(userId);
+      await saveTodosFirebase(userId, todos, archivedTodos);
+    } catch (error) {
+      cleanupError = error;
+      console.log("logout cleanup failed:", error);
+    } finally {
+      try {
+        await signOut(FIREBASE_AUTH);
+        console.log("logout: signOut successful");
+        try {
+          navigation.reset({ index: 0, routes: [{ name: "Login" }] });
+        } catch (navErr) {
+          console.log("logout: navigation.reset failed", navErr);
+        }
+      } catch (signOutError) {
+        console.log("logout signOut failed:", signOutError);
+        alert("Fout bij uitloggen: " + String(signOutError));
+        return;
+      }
+
+      if (cleanupError) {
+        console.log(
+          "logout completed with cleanup warning:",
+          cleanupError,
+        );
+      }
+    }
+  }, [archivedTodos, todos, userId, navigation]);
 
   // Parsers voor web date/time invoer (ondersteunt meerdere formaten)
   const parseDateInput = (input: string | null) => {
@@ -2665,25 +2675,96 @@ const List: React.FC<ListScreenProps> = ({
           setLocationPermissionGranted(status === "granted");
           if (status === "granted") {
             try {
-              const lastKnown = await Location.getLastKnownPositionAsync();
-              const current =
-                lastKnown ??
-                (await Location.getCurrentPositionAsync({
-                  accuracy: Location.Accuracy.Balanced,
-                }));
-              const currentLatLng = {
-                latitude: current.coords.latitude,
-                longitude: current.coords.longitude,
+              const fetchLocationWithFallback = async () => {
+                // Prefer a fresh current position first (higher accuracy).
+                try {
+                  const current = await Promise.race([
+                    Location.getCurrentPositionAsync({
+                      accuracy: Location.Accuracy.Highest,
+                      // may take longer but yields a more accurate sample
+                    }),
+                    new Promise((_, reject) =>
+                      setTimeout(() => reject(new Error("timeout")), 10000),
+                    ),
+                  ]);
+                  return current as Location.LocationObject;
+                } catch (getErr) {
+                  console.log("getCurrentPosition failed, will try lastKnown/get watch fallback:", getErr);
+                }
+
+                // If getCurrentPositionAsync failed or timed out, fall back to last known position
+                try {
+                  const lastKnown = await Location.getLastKnownPositionAsync();
+                  if (lastKnown) return lastKnown;
+                } catch (e) {
+                  // ignore
+                }
+
+                // Fallback: subscribe to a short-lived watch and resolve on first sample
+                return await new Promise<Location.LocationObject | null>(
+                  async (resolve) => {
+                    let resolved = false;
+                    let timer: any = null;
+                    try {
+                      const sub = await Location.watchPositionAsync(
+                        {
+                          accuracy: Location.Accuracy.Balanced,
+                          timeInterval: 1000,
+                          distanceInterval: 1,
+                        },
+                        (pos) => {
+                          if (!resolved) {
+                            resolved = true;
+                            clearTimeout(timer);
+                            resolve(pos);
+                            try {
+                              sub.remove();
+                            } catch {}
+                          }
+                        },
+                      );
+                      // if nothing after 8s, give up
+                      timer = setTimeout(() => {
+                        if (!resolved) {
+                          resolved = true;
+                          try {
+                            sub.remove();
+                          } catch {}
+                          resolve(null);
+                        }
+                      }, 8000);
+                    } catch (watchErr) {
+                      console.log("watchPositionAsync failed:", watchErr);
+                      if (!resolved) resolve(null);
+                    }
+                  },
+                );
               };
-              setUserLocation(currentLatLng);
-              if (!workingLocation) {
-                workingLocation = { ...currentLatLng };
-                workingRegion = {
-                  latitude: workingLocation.latitude,
-                  longitude: workingLocation.longitude,
-                  latitudeDelta: 0.01,
-                  longitudeDelta: 0.01,
+
+              const loc = await fetchLocationWithFallback();
+              if (loc) {
+                const currentLatLng = {
+                  latitude: loc.coords.latitude,
+                  longitude: loc.coords.longitude,
                 };
+                setUserLocation(currentLatLng);
+                if (!workingLocation) {
+                  workingLocation = { ...currentLatLng };
+                  workingRegion = {
+                    latitude: workingLocation.latitude,
+                    longitude: workingLocation.longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  };
+                }
+              } else {
+                console.log("Kon huidige locatie niet ophalen: geen locatie ontvangen");
+                setUserLocation(null);
+                setLocationHelperMessage(
+                  language === "nl"
+                    ? "Kon huidige locatie niet ophalen. Kies handmatig een locatie."
+                    : "Unable to fetch current location. Please pick a spot manually.",
+                );
               }
             } catch (err) {
               console.log("Kon huidige locatie niet ophalen:", err);
@@ -3383,8 +3464,6 @@ const List: React.FC<ListScreenProps> = ({
     () => ({
       editSubtask: strings.editSubtask,
       subtaskName: strings.subtaskName,
-      subtaskDescription: strings.subtaskDescription,
-      subtaskDescriptionPlaceholder: strings.subtaskDescriptionPlaceholder,
       deadline: strings.deadline,
       clearDeadline: strings.clearDeadline,
       noDeadline: strings.noDeadline,
@@ -3804,7 +3883,7 @@ const List: React.FC<ListScreenProps> = ({
         onSelectTab={(tab) => setShowArchive(tab === "archive")}
         onAddTask={handleHeaderAddTask}
         showAddButton={false}
-        onLogout={logout}
+        onLogout={userId ? logout : undefined}
         logoutLabel={strings.logout}
         currentDateLabel={selectedDayLabel}
         onGoToPreviousDay={goToPreviousDay}
@@ -3847,8 +3926,6 @@ const List: React.FC<ListScreenProps> = ({
         theme={theme}
         subtaskText={subtaskEditorText}
         onChangeText={setSubtaskEditorText}
-        subtaskDescription={subtaskEditorDescription}
-        onChangeDescription={setSubtaskEditorDescription}
         onOpenDate={openSubtaskEditorDate}
         onOpenTime={openSubtaskEditorTime}
         onClearDeadline={clearSubtaskEditorDeadline}
@@ -3881,8 +3958,6 @@ const List: React.FC<ListScreenProps> = ({
         language={language}
         subtaskText={subtaskText}
         onChangeSubtask={setSubtaskText}
-        subtaskDescription={subtaskDescription}
-        onChangeSubtaskDescription={setSubtaskDescription}
         priority={newSubtaskPriority}
         onSelectPriority={setNewSubtaskPriority}
         onOpenDate={openSubtaskDate}
@@ -3891,7 +3966,6 @@ const List: React.FC<ListScreenProps> = ({
         onAdd={handleSubtaskCreatorAdd}
         onClose={closeSubtaskCreator}
         placeholder={strings.newSubtask}
-        descriptionPlaceholder={strings.subtaskDescriptionPlaceholder}
         deadlinePreview={subtaskCreatorDeadlineDisplay}
         locationPreview={subtaskCreatorLocationDisplay}
         locationAccessibility={{
@@ -3912,8 +3986,6 @@ const List: React.FC<ListScreenProps> = ({
         theme={theme}
         taskText={taskEditorText}
         onChangeText={setTaskEditorText}
-        taskDescription={taskEditorDescription}
-        onChangeDescription={setTaskEditorDescription}
         onOpenDate={openTaskEditorDate}
         onOpenTime={openTaskEditorTime}
         onClearDeadline={clearTaskEditorDeadline}
@@ -3946,8 +4018,6 @@ const List: React.FC<ListScreenProps> = ({
         language={language}
         taskText={task}
         onChangeTask={setTask}
-        taskDescription={taskDescription}
-        onChangeDescription={setTaskDescription}
         inputRef={taskInputRef}
         priority={newPriority}
         onSelectPriority={setNewPriority}

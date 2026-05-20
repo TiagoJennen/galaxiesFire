@@ -18,8 +18,6 @@ export type SubtaskPriority = "low" | "medium" | "high";
 type InlineSubtaskEditorProps = {
   text: string; // Tekst van de subtask
   onChangeText: (value: string) => void; // Callback bij tekstwijziging
-  description: string; // Beschrijving bij de subtask
-  onChangeDescription: (value: string) => void; // Callback bij beschrijving
   priority: SubtaskPriority; // Geselecteerde prioriteit
   onSelectPriority: (value: SubtaskPriority) => void; // Callback bij prioriteit wijziging
   onOpenDate: () => void; // Open datum picker
@@ -29,7 +27,6 @@ type InlineSubtaskEditorProps = {
   colors: ThemeColors; // Kleuren van het thema
   theme: "light" | "dark";
   placeholder: string; // Placeholder tekst voor TextInput
-  descriptionPlaceholder: string; // Placeholder voor beschrijving
   accessibilityLabels: {
     // Toegankelijkheidslabels
     locationLabel: string;
@@ -53,8 +50,6 @@ const PRIORITY_BUTTONS: Array<{
 const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
   text,
   onChangeText,
-  description,
-  onChangeDescription,
   priority,
   onSelectPriority,
   onOpenDate,
@@ -64,7 +59,6 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
   colors,
   theme,
   placeholder,
-  descriptionPlaceholder,
   accessibilityLabels,
   showInlineAdd = true,
   variant = "inline",
@@ -102,17 +96,6 @@ const InlineSubtaskEditor: React.FC<InlineSubtaskEditorProps> = ({
         style={styles.input}
         placeholderTextColor={styles.placeholderColor.color as string}
         autoCorrect={false}
-      />
-
-      <TextInput
-        placeholder={descriptionPlaceholder}
-        value={description}
-        onChangeText={onChangeDescription}
-        style={[styles.input, styles.descriptionInput]}
-        placeholderTextColor={styles.placeholderColor.color as string}
-        autoCorrect={false}
-        multiline
-        textAlignVertical="top"
       />
 
       <View style={controlsRowStyle}>
