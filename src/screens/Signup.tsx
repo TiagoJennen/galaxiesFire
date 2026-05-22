@@ -19,6 +19,7 @@ import { useNavigation } from "@react-navigation/native";
 import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { FIREBASE_AUTH } from "../services/FirebaseConfig";
 import { translations } from "../constants/translations";
+import { isFirebaseAuthConfigError } from "../services/firebaseAuthErrors";
 
 interface Props {
   theme: "light" | "dark";
@@ -107,6 +108,8 @@ const Signup: React.FC<Props> = ({
             ? "Ongeldig e-mailadres."
             : "Invalid email address.",
         );
+      } else if (isFirebaseAuthConfigError(error)) {
+        alert(translations[language].firebaseAuthBlocked);
       } else if (code === "auth/network-request-failed") {
         const invalidConfig =
           combinedErrorText.includes("api key") ||

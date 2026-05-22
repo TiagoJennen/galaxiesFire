@@ -19,6 +19,7 @@ import { FIREBASE_AUTH } from "../services/FirebaseConfig";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { useNavigation } from "@react-navigation/native";
 import { translations } from "../constants/translations";
+import { isFirebaseAuthConfigError } from "../services/firebaseAuthErrors";
 
 interface Props {
   theme: "light" | "dark";
@@ -74,6 +75,8 @@ const Login: React.FC<Props> = ({
       ];
       if (invalidCredentialCodes.includes(code)) {
         alert(translations[language].invalidCredentials);
+      } else if (isFirebaseAuthConfigError(error)) {
+        alert(translations[language].firebaseAuthBlocked);
       } else if (code === "auth/network-request-failed") {
         const invalidConfig =
           combinedErrorText.includes("api key") ||

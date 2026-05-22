@@ -24,6 +24,8 @@ export const translations = {
     loginFailed: "Inloggen mislukt.",
     invalidCredentials: "E-mail of wachtwoord onjuist.",
     signupFailed: "Account aanmaken mislukt.",
+    firebaseAuthBlocked:
+      "Firebase Auth wordt geblokkeerd door de API-key of Identity Toolkit-instellingen. Controleer in Firebase Console of de Identity Toolkit API aan staat en of de apiKey niet beperkt is voor deze app.",
     authNetworkFailed:
       "Netwerkfout bij aanmelden. Controleer internet op je emulator en probeer opnieuw.",
     firebaseConfigInvalid:
@@ -103,6 +105,8 @@ export const translations = {
     loginFailed: "Login failed.",
     invalidCredentials: "Email or password is incorrect.",
     signupFailed: "Sign up failed.",
+    firebaseAuthBlocked:
+      "Firebase Auth is blocked by the API key or Identity Toolkit settings. In Firebase Console, make sure the Identity Toolkit API is enabled and the apiKey is not restricted for this app.",
     authNetworkFailed:
       "Network error while authenticating. Check emulator internet and try again.",
     firebaseConfigInvalid:
