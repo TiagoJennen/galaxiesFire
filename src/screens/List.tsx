@@ -2676,12 +2676,12 @@ const List: React.FC<ListScreenProps> = ({
           if (status === "granted") {
             try {
               const fetchLocationWithFallback = async () => {
-                // Prefer a fresh current position first (higher accuracy).
+                // Geef eerst de voorkeur aan een recente actuele positie (hogere nauwkeurigheid).
                 try {
                   const current = await Promise.race([
                     Location.getCurrentPositionAsync({
                       accuracy: Location.Accuracy.Highest,
-                      // may take longer but yields a more accurate sample
+                      // kan langer duren maar levert een nauwkeuriger sample
                     }),
                     new Promise((_, reject) =>
                       setTimeout(() => reject(new Error("timeout")), 10000),
@@ -2692,15 +2692,15 @@ const List: React.FC<ListScreenProps> = ({
                   console.log("getCurrentPosition failed, will try lastKnown/get watch fallback:", getErr);
                 }
 
-                // If getCurrentPositionAsync failed or timed out, fall back to last known position
+                // Als getCurrentPositionAsync faalt of time-out heeft, val terug op laatst bekende positie
                 try {
                   const lastKnown = await Location.getLastKnownPositionAsync();
                   if (lastKnown) return lastKnown;
                 } catch (e) {
-                  // ignore
+                  // negeer
                 }
 
-                // Fallback: subscribe to a short-lived watch and resolve on first sample
+                // Terugval: abonneer op een korte watch en los op bij het eerste sample
                 return await new Promise<Location.LocationObject | null>(
                   async (resolve) => {
                     let resolved = false;

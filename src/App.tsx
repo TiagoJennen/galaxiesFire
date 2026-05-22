@@ -76,9 +76,9 @@ export default function App() {
     let unsubscribe: (() => void) | undefined;
 
     const initialiseSession = async () => {
-      // Subscribe to auth state changes and update local state.
-      // Do not sign out on startup — preserve existing sessions so
-      // newly-registered users remain signed in.
+      // Abonneer op auth-statuswijzigingen en werk de lokale state bij.
+      // Log niet uit bij opstarten — behoud bestaande sessies zodat
+      // nieuw geregistreerde gebruikers ingelogd blijven.
       if (!isMounted) return;
 
       unsubscribe = onAuthStateChanged(FIREBASE_AUTH, (usr) => {
@@ -96,7 +96,7 @@ export default function App() {
     };
   }, []);
 
-  // Reset navigation whenever auth state changes after the navigator is ready.
+  // Reset de navigatie wanneer de auth-status verandert nadat de navigator klaar is.
   useEffect(() => {
     if (loading) return;
     const nav = navigationRef.current;
@@ -110,7 +110,7 @@ export default function App() {
         nav.reset({ index: 0, routes: [{ name: "Inside" }] });
       }
     } catch (e) {
-      // navigation may not be ready; ignore and allow onReady handler to run.
+      // navigatie is mogelijk nog niet klaar; negeer en laat de onReady-handler afhandelen.
     }
   }, [user, loading]);
 
@@ -121,9 +121,9 @@ export default function App() {
       <StatusBar style={theme === "light" ? "dark" : "light"} hidden={false} />
       <NavigationContainer
         ref={navigationRef}
-        onReady={() => {
+          onReady={() => {
           if (!user) {
-            // Reset to login when auth state changes
+            // Reset naar login wanneer de auth-status verandert
             const state = navigationRef.current?.getRootState();
             if (state?.routes[0]?.name !== "Login") {
               navigationRef.current?.reset({

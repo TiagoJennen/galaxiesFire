@@ -1,13 +1,13 @@
-// Checks whether the app is running on web or native
+// Controleert of de app op web of native draait
 import { Platform } from "react-native";
 
-// Initialize Firebase app
+// Initialiseer de Firebase-app
 import { getApp, getApps, initializeApp } from "firebase/app";
 
-// Type for the Firebase auth instance
+// Type voor de Firebase auth-instantie
 import type { Auth } from "firebase/auth";
 
-// Functions for authentication and user management
+// Functies voor authenticatie en gebruikersbeheer
 import {
   initializeAuth,
   getAuth,
@@ -15,14 +15,14 @@ import {
   inMemoryPersistence,
 } from "firebase/auth";
 
-// Local storage for mobile devices
+// Lokale opslag voor mobiele apparaten
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Firestore database import
+// Firestore-database import
 import { getFirestore } from "firebase/firestore";
 
-// Firebase project settings
-// Settings used to connect the app to the Firebase project
+// Firebase projectinstellingen
+// Instellingen om de app met het Firebase-project te verbinden
 const firebaseConfig = {
   apiKey: "AIzaSyCB2iYs9TQGI-B2splUUKNDy2zDh8KyFEs",
   authDomain: "login-bf5c2.firebaseapp.com",
@@ -39,27 +39,27 @@ if (looksLikePlaceholderApiKey) {
   );
 }
 
-// Initialize Firebase with the settings above
-// During hot reload this file may be re-evaluated; reuse existing app instance.
+// Initialiseer Firebase met bovenstaande instellingen
+// Bij hot reload kan dit bestand opnieuw worden geëvalueerd; hergebruik de bestaande app-instantie.
 export const FIREBASE_APP = getApps().length
   ? getApp()
   : initializeApp(firebaseConfig);
 
-// Variable for the Firebase auth instance
+// Variabele voor de Firebase auth-instantie
 let FIREBASE_AUTH: Auth;
 
-// Detect which platform the app is running on
-// Web and native use different persistence strategies for auth
+// Detecteer op welk platform de app draait
+// Web en native gebruiken verschillende persistence-strategieën voor auth
 if (Platform.OS === "web") {
-  // Get the auth instance
+  // Haal de auth-instantie op
   const auth = getAuth(FIREBASE_APP);
 
-  // Use in-memory persistence so restarts always require re-login.
+  // Gebruik in-memory persistence zodat herstarts altijd opnieuw inloggen vereisen.
   setPersistence(auth, inMemoryPersistence).catch((error) => {
     console.log("Fout bij opslaan login:", error);
   });
 
-  // Store the auth instance
+  // Sla de auth-instantie op
   FIREBASE_AUTH = auth;
   console.log("Firebase auth initialized (web)");
 } else {
@@ -69,7 +69,7 @@ if (Platform.OS === "web") {
     });
     console.log("Firebase auth initialized (native)");
   } catch (error: any) {
-    // initializeAuth can only be called once per app; on hot reload use existing auth.
+    // initializeAuth mag maar 1x per app aangeroepen worden; bij hot reload gebruik bestaande auth.
     if (error?.code === "auth/already-initialized") {
       FIREBASE_AUTH = getAuth(FIREBASE_APP);
     } else {
@@ -78,10 +78,10 @@ if (Platform.OS === "web") {
   }
 }
 
-// Export the auth instance
-// Other files can use this for sign-in and registration
+// Exporteer de auth-instantie
+// Andere bestanden kunnen deze gebruiken voor aanmelding en registratie
 export { FIREBASE_AUTH };
 
-// Initialize Firestore database
-// Tasks and user data are stored here
+// Initialiseer de Firestore-database
+// Taken en gebruikersdata worden hier opgeslagen
 export const FIREBASE_DB = getFirestore(FIREBASE_APP);

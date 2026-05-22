@@ -12,9 +12,9 @@ const now = () => {
     typeof performance !== "undefined" &&
     typeof performance.now === "function"
   ) {
-    return performance.now(); // hoge precisie, ideaal voor performance metingen
+    return performance.now(); // hoge precisie, ideaal voor performancemetingen
   }
-  return Date.now(); // fallback, minder precies maar altijd beschikbaar
+  return Date.now(); // terugvaloptie, minder precies maar altijd beschikbaar
 };
 
 // Start een nieuwe timer door het huidige tijdstip op te slaan.
