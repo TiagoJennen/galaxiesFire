@@ -24,7 +24,7 @@ import { getFirestore } from "firebase/firestore";
 // Firebase project instellingen
 // Hiermee maakt de app verbinding met mijn Firebase project
 const firebaseConfig = {
-  apiKey: "AIzaSyBxxtGYB3xq0j0mjCZYoKJMweuEtZzEUJE",
+  apiKey: "AIzaSyCB2iYs9TQGI-B2splUUKNDy2zDh8KyFEs",
   authDomain: "login-bf5c2.firebaseapp.com",
   projectId: "login-bf5c2",
   storageBucket: "login-bf5c2.firebasestorage.app",
